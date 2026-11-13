@@ -48,8 +48,18 @@ func _ready() -> void:
 	_on_resize()
 	if OS.get_environment("AF_SHOT") != "": _autotest(OS.get_environment("AF_SHOT"))
 
+## Phone screens are dense: the 600-unit-tall UI would be only ~3 inches high and its text tiny.
+## Scale the canvas so the UI keeps a readable physical size (about 150 UI units per inch), never
+## smaller than the desktop layout. AF_DPI overrides the screen DPI for tests.
 func _on_resize() -> void:
-	pass
+	var win := get_window()
+	var dpi := float(OS.get_environment("AF_DPI")) if OS.get_environment("AF_DPI") != "" else float(DisplayServer.screen_get_dpi())
+	var f := 1.0
+	if dpi > 0 and (OS.has_feature("mobile") or OS.get_environment("AF_DPI") != ""):
+		var h_in := float(min(win.size.x, win.size.y)) / dpi
+		f = clampf(600.0 / (h_in * 150.0), 1.0, 1.75)
+	if abs(win.content_scale_factor - f) > 0.01:
+		win.content_scale_factor = f
 
 # ---------------- host interface for the simulation ----------------
 func toast(msg: String, kind := "") -> void:
