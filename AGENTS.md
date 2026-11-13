@@ -51,12 +51,12 @@ godot --headless tests/sim_test.tscn   # must end with SIM TEST DONE and no SCRI
 
 ## Audio and UI on phones
 
-- Sounds come from `godot/tools/synth.py` (`python3 tools/synth.py .` from `godot/`). It sets the levels for phone
-  speakers: effects are normalised one by one with a squeezed range, and the march gets +9 dB with a soft knee.
+- Sounds come from `godot/tools/synth.py` (`python3 tools/synth.py .` from `godot/`). Keep the current levels:
+  Guillaume tried +9 to +20 dB louder (PR #4) and asked for the original levels back (2026-11-13).
   To check that the game makes sound without a sound card, record a run with `--write-movie out.avi --fixed-fps 20`
   and measure the audio track with ffmpeg.
-- `main.gd _on_resize` scales the UI on mobile from the screen DPI (`content_scale_factor`, about 150 UI units per
-  inch). Test a phone layout with `AF_DPI=400 ... --resolution 2410x1080`.
+- `main.gd _on_resize` scales the UI on mobile from the screen DPI (`content_scale_factor`, about 180 UI units per
+  inch, so about ×1.25 on a 2410×1080 phone; Guillaume found ×1.5 too big). Test a phone layout with `AF_DPI=400 ... --resolution 2410x1080`.
 
 ## Keeping this file up to date
 

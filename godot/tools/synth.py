@@ -355,17 +355,6 @@ def reverb_tail(w):
     return r * 0.32 * 1.6 / max(1e-6, np.sqrt(np.sum(IMP ** 2)))
 
 
-def master(st, gain_db=9.0, knee=0.6):
-    """Louder march for phone speakers: fixed gain (same for both layers, so the crossfade holds),
-    then a soft knee above `knee` instead of hard clipping on drum hits."""
-    x = st * 10 ** (gain_db / 20)
-    a = np.abs(x)
-    over = a > knee
-    y = x.copy()
-    y[over] = np.sign(x[over]) * (knee + (1 - knee) * np.tanh((a[over] - knee) / (1 - knee)))
-    return y * 0.97
-
-
 def main():
     root = sys.argv[1]
     os.makedirs(f'{root}/sfx', exist_ok=True); os.makedirs(f'{root}/music', exist_ok=True)
@@ -375,16 +364,13 @@ def main():
     for n in names:
         out[n] = sfx(n); peak = max(peak, np.abs(out[n]).max())
     for n in names:
-        # Each effect keeps its place in the mix, but the range is squeezed (power 0.35) so quiet
-        # UI clicks and small arms stay audible on a phone speaker; nothing goes below 0.4 peak.
-        p = np.abs(out[n]).max()
-        s = out[n] / p * max(0.4, 0.95 * (p / peak) ** 0.35)
+        s = out[n] / peak * 0.95
         write_wav(f'{root}/sfx/{n}.wav', s)
         print(n, round(len(s) / SR, 2), 's')
     if '--no-music' in sys.argv:
         return
     for nm, I in (('march_calm', .1), ('march_combat', .95)):
-        st = master(render_march(I))
+        st = render_march(I)
         tmp = f'/tmp/{nm}.wav'
         data = (np.clip(st, -1, 1) * 32767).astype('<i2')
         with wave.open(tmp, 'wb') as w:
