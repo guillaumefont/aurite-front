@@ -15,7 +15,12 @@
 
 ## Layout
 
-- `godot/`: the main version, Godot 4.7.2 (GDScript, GL Compatibility), exported to Android.
+- `godot/`: the main version, Godot 4.7.2 (GDScript), exported to Android. Renderer: Mobile (Vulkan), with automatic fallback
+  to GL Compatibility on devices without Vulkan (`rendering_device/fallback_to_opengl3`). Some phone GL drivers
+  drew huge stretched triangles in Compatibility, so keep Mobile as the default and keep MultiMesh buffers fully
+  initialised (`View3D._batch` uploads zeros first and hides empty batches).
+  Test locally with `xvfb-run godot --path godot` (needs `mesa-vulkan-drivers`); add
+  `--rendering-method gl_compatibility` to check the fallback.
   See `godot/README.md` for the scripts and controls.
 - `web-3d/`: the low-poly 3D browser version the port is based on (one HTML file). Reference only.
 - `android-webview/`: older Android WebView wrapper around `web-3d` (`build.sh`, no Gradle). Not built by CI.
