@@ -182,6 +182,9 @@ func _batch(mesh: Mesh, mat: Material, cap: int, shadow := false) -> Dictionary:
 	mi.custom_aabb = AABB(Vector3(-10, -10, -10), Vector3(100, 60, 100))
 	add_child(mi)
 	var buf := PackedFloat32Array(); buf.resize(cap * 16)
+	# Upload zeros once so the GPU buffer never holds uninitialised memory (some mobile GL drivers
+	# otherwise draw garbage, huge stretched triangles), and hide the batch while it is empty.
+	mm.buffer = buf; mi.visible = false
 	return {"mm": mm, "mi": mi, "buf": buf, "n": 0, "cap": cap}
 
 func _init_batches() -> void:
@@ -226,9 +229,12 @@ func _put(b: Dictionary, x: float, y: float, z: float, sx: float, sy: float, sz:
 	b.n = n + 1
 
 func _flush(b: Dictionary) -> void:
-	var mm: MultiMesh = b.mm
+	var mm: MultiMesh = b.mm; var mi: MultiMeshInstance3D = b.mi
+	if b.n == 0:
+		mi.visible = false; return
+	mm.buffer = b.buf
 	mm.visible_instance_count = b.n
-	if b.n > 0: mm.buffer = b.buf
+	mi.visible = true
 	b.n = 0
 
 # ---------------- world ----------------
@@ -307,11 +313,13 @@ func build_world() -> void:
 		if S.ore[i]: ore_list.append(i)
 	var om := _mesh_from("oct")
 	var mm := MultiMesh.new(); mm.transform_format = MultiMesh.TRANSFORM_3D; mm.use_colors = true; mm.mesh = om; mm.instance_count = max(1, ore_list.size() * 5)
+	var zb := PackedFloat32Array(); zb.resize(mm.instance_count * 16); mm.buffer = zb; mm.visible_instance_count = 0
 	ore_mm = MultiMeshInstance3D.new(); ore_mm.multimesh = mm; ore_mm.material_override = lit; world.add_child(ore_mm)
 	refresh_decor(); upd_ore()
 
 func _wbatch(mesh: Mesh, mat: Material, n: int) -> MultiMeshInstance3D:
 	var mm := MultiMesh.new(); mm.transform_format = MultiMesh.TRANSFORM_3D; mm.use_colors = true; mm.mesh = mesh; mm.instance_count = max(1, n)
+	var zb := PackedFloat32Array(); zb.resize(mm.instance_count * 16); mm.buffer = zb
 	mm.visible_instance_count = n
 	var mi := MultiMeshInstance3D.new(); mi.multimesh = mm; mi.material_override = mat
 	world.add_child(mi)
