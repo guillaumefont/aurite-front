@@ -1,5 +1,8 @@
 # Aurite Front
 
+**[Download the Android APK](https://guillaumefont.github.io/aurite-front/aurite-front.apk)** (latest `main` build) ·
+**[Play in the browser](https://guillaumefont.github.io/aurite-front/web-3d/)** (3D web version)
+
 An original, old-school real-time strategy game for mobile and desktop: two factions
 (Vanguard and Ashen Pact) fight over aurite crystals with infantry, vehicles, aircraft and base building.
 Skirmish against the AI or play the 5-mission campaign. Touch-first controls, with mouse support.
