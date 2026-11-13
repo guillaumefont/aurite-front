@@ -30,4 +30,5 @@ func _ready():
 	for m in D.MISSIONS:
 		s.new_game("normal", {"mission": m}); for i in 200: s.step(0.05)
 		print(m.title, " ", s.ents.size(), " ", s.obj_text())
+	print("SIM TEST DONE")
 	get_tree().quit()

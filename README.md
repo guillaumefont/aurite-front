@@ -23,8 +23,25 @@ All art is low-poly and built procedurally; sound effects and the military march
   three.js and fonts from CDNs, so it needs a network connection.
 - **Android WebView**: see [`android-webview/README.md`](android-webview/README.md).
 
+## CI and APK downloads
+
+GitHub Actions (in `.github/workflows/`), on every push to `main` and every pull request:
+
+- **Headless sim** runs `godot/tests/sim_test.tscn` (AI vs AI soak and every mission's setup) and fails on script errors.
+- **Builds** exports the Godot game as an Android APK (release template, test-signed) and publishes it on
+  GitHub Pages with a small download page and the 3D web version:
+  - `main`: `https://guillaumefont.github.io/aurite-front/aurite-front.apk`
+  - pull request N: `https://guillaumefont.github.io/aurite-front/pr/N/aurite-front.apk`, linked in a comment on
+    the PR and deleted when it closes.
+
+  The APK is also attached to each workflow run as an artifact. Its versionCode is `100 + run number`, so a newer build
+  always installs over an older one, and every build shares the package id `io.aurite.frontgodot`.
+- **Deploy Pages** deploys the `gh-pages` branch, one deployment at a time. It needs Settings > Pages > Source set to
+  "GitHub Actions"; until then it skips.
+
 ## Signing
 
 Both Android builds are debug-signed with `android-webview/debug.keystore`, a debug-only key that is
-committed so that new builds install over existing ones. APKs and other build outputs are not
+committed so that new builds install over existing ones (CI uses it too, unless an
+`ANDROID_DEBUG_KEYSTORE_BASE64` secret provides another debug key). APKs and other build outputs are not
 committed; release keys must never be.

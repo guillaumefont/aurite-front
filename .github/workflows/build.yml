@@ -1,0 +1,179 @@
+name: Builds
+
+# Exports the Godot game (godot/) as an Android APK and publishes it on GitHub Pages
+# (gh-pages branch), next to a small download page and the 3D web version (web-3d/):
+#   main           -> https://<owner>.github.io/<repo>/aurite-front.apk
+#   pull request N -> https://<owner>.github.io/<repo>/pr/N/aurite-front.apk
+# Each open PR keeps its own preview, linked in a comment on the PR; it is removed when
+# the PR is closed. The APK is also attached to each run as an artifact.
+# Builds only push to the gh-pages branch; the site itself is deployed by pages.yml, which
+# runs one deployment at a time so builds landing together don't cancel each other.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write # start the Deploy Pages workflow
+
+# one build per branch/PR at a time (a newer push cancels the older build)
+concurrency:
+  group: builds-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.7.2
+  APK_NAME: aurite-front.apk
+
+jobs:
+  export:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: godot
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache export templates
+        id: tpl
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.stable
+          key: godot-templates-${{ env.GODOT_VERSION }}-android
+
+      - name: Download Godot
+        run: |
+          curl -sSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip && mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$RUNNER_TEMP/godot" && rm godot.zip
+
+      - name: Download export templates
+        if: steps.tpl.outputs.cache-hit != 'true'
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -sSL -o tpl.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q tpl.tpz 'templates/android_*' 'templates/version.txt'
+          dest="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$dest" && mv templates/* "$dest/" && rm -rf tpl.tpz templates
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Every test APK must be signed with the SAME key, or Android refuses to install it over
+      # the previous one ("app not installed") and the tester has to uninstall first. So the
+      # debug keystore is fixed: the one committed in android-webview/ (test builds only, also
+      # used for the earlier hand-built APKs), unless an ANDROID_DEBUG_KEYSTORE_BASE64 secret
+      # provides another one.
+      - name: Android signing (debug keystore) and editor settings
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          ks="$RUNNER_TEMP/debug.keystore"
+          if [ -n "$KEYSTORE_B64" ]; then echo "$KEYSTORE_B64" | base64 -d > "$ks"
+          else cp ../android-webview/debug.keystore "$ks"; fi
+          keytool -list -keystore "$ks" -storepass android -alias androiddebugkey | tail -1
+          mkdir -p ~/.config/godot
+          cat > ~/.config/godot/editor_settings-4.7.tres <<EOT
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/debug_keystore = "$ks"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          EOT
+          sed -i 's/^          //' ~/.config/godot/editor_settings-4.7.tres
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$ks" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_RELEASE_PATH=$ks" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_RELEASE_USER=androiddebugkey" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=android" >> "$GITHUB_ENV"
+
+      - name: Import project
+        run: $RUNNER_TEMP/godot --headless --path . --import
+
+      # Release template (about half the size of the debug one), signed with the fixed test
+      # keystore above. Outputs go outside the project folder, so Godot never imports them.
+      # versionCode must never go down between builds, or Android refuses the update:
+      # use the workflow run number (it only grows), and show it in the version name.
+      - name: Export Android (release APK, test-signed)
+        env:
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          OUT="$RUNNER_TEMP/out"
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+          base=$(sed -n 's/^version\/name="\(.*\)"/\1/p' export_presets.cfg | head -1)
+          code=$((100 + GITHUB_RUN_NUMBER))
+          name="${base}-${PR:+pr$PR.}b$GITHUB_RUN_NUMBER"
+          sed -i "0,/^version\/code=.*/s//version\/code=$code/; 0,/^version\/name=.*/s//version\/name=\"$name\"/" export_presets.cfg
+          grep -m2 '^version/' export_presets.cfg
+          mkdir -p "$OUT/android"
+          $RUNNER_TEMP/godot --headless --path . --export-release Android "$OUT/android/$APK_NAME"
+          test -s "$OUT/android/$APK_NAME"
+          ls -lh "$OUT/android/$APK_NAME"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurite-front-apk
+          path: ${{ runner.temp }}/out/android/${{ env.APK_NAME }}
+
+      - name: Publish to gh-pages
+        working-directory: .
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          DEST: ${{ github.event.pull_request.number && format('pr/{0}', github.event.pull_request.number) || '.' }}
+        run: |
+          mkdir -p "$OUT/stage/web-3d"
+          cp "$OUT/android/$APK_NAME" "$OUT/stage/"
+          cp .github/pages/index.html "$OUT/stage/"
+          cp web-3d/index.html "$OUT/stage/web-3d/"
+          sed -i "s/__BUILD__/${GITHUB_SHA::7}${PR:+ (PR #$PR)}/" "$OUT/stage/index.html"
+          # site root only: dead PR preview links land on 404.html, which opens the main build
+          if [ "$DEST" = "." ]; then cp .github/pages/404.html "$OUT/stage/"; fi
+          bash .github/publish-pages.sh "$OUT/stage" "$DEST" "Build of ${GITHUB_SHA::7} for $DEST"
+
+      - name: Deploy the site
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref "${{ github.event.repository.default_branch }}" || echo "::warning::Could not start Deploy Pages"
+
+      - name: Link the preview on the PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const n = context.issue.number;
+            const base = `https://${context.repo.owner}.github.io/${context.repo.repo}/pr/${n}/`;
+            const body = `<!-- preview -->\n**Preview of this PR** (updated on every push, sha ${context.sha.slice(0, 7)})\n\n- Android APK: ${base}${process.env.APK_NAME}\n- Download page: ${base}\n\nIt may take a minute after the build for GitHub Pages to refresh. The APK is also attached to the workflow run as an artifact.`;
+            const { data: comments } = await github.rest.issues.listComments({ ...context.repo, issue_number: n });
+            const old = comments.find(c => c.body.startsWith('<!-- preview -->'));
+            if (old) await github.rest.issues.updateComment({ ...context.repo, comment_id: old.id, body });
+            else await github.rest.issues.createComment({ ...context.repo, issue_number: n, body });
+
+  # a closed PR's preview is deleted
+  cleanup:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - name: Remove the PR preview
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/publish-pages.sh "" "pr/${{ github.event.pull_request.number }}" "Remove preview of PR ${{ github.event.pull_request.number }}"
+
+      - name: Deploy the site
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref "${{ github.event.repository.default_branch }}" || echo "::warning::Could not start Deploy Pages"
