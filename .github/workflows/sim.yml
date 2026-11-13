@@ -1,0 +1,35 @@
+name: Headless sim
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  GODOT_VERSION: 4.7.2
+
+jobs:
+  sim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: godot
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Godot
+        run: |
+          curl -sSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip && mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$RUNNER_TEMP/godot" && rm godot.zip
+      - name: Import project
+        run: $RUNNER_TEMP/godot --headless --path . --import
+      # Godot exits 0 even when a script breaks, so the log is checked too: no script or
+      # parse error, and the test reached its end.
+      - name: AI vs AI soak and every mission sets up
+        run: |
+          $RUNNER_TEMP/godot --headless --path . tests/sim_test.tscn 2>&1 | tee "$RUNNER_TEMP/sim.log"
+          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|Invalid call|Invalid access" "$RUNNER_TEMP/sim.log"; then
+            echo "::error::Script errors during the sim test"; exit 1
+          fi
+          grep -q "^8 min sim ms" "$RUNNER_TEMP/sim.log" || { echo "::error::The soak did not finish"; exit 1; }
+          grep -q "^SIM TEST DONE" "$RUNNER_TEMP/sim.log" || { echo "::error::The test did not reach its end"; exit 1; }
