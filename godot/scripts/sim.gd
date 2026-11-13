@@ -533,6 +533,8 @@ func plan_formation(movers: Array, wx: float, wy: float, face = null, width := 0
 			row += 1; i += wide
 	return plan
 
+const STRAGGLE := 8.0
+
 func group_move(units: Array, wx: float, wy: float, order: String, face = null, width := 0.0) -> void:
 	if units.is_empty(): return
 	var fighters := units.filter(func(u): return u.d.dmg > 0 and not u.d.air)
@@ -547,20 +549,25 @@ func group_move(units: Array, wx: float, wy: float, order: String, face = null, 
 		if u.d.harv: u.hs = "manual"
 		set_path(u, sl.x, sl.y)
 	if plan.size() > 1:
-		# shared pace: everyone arrives together (aircraft fly ahead)
+		# shared pace: the main body arrives together (aircraft fly ahead). Units far behind the main
+		# body (STRAGGLE tiles more to travel than the median) don't hold it back: they go at full speed.
 		var ground: Array = []
 		for p in plan:
 			if not p[0].d.air and p[0].path.size(): ground.append(p[0])
-		var eta := 0.0
+		var lens: Array = []
 		for u in ground:
 			var L := 0.0; var x: float = u.x; var y: float = u.y
 			for c in u.path:
 				var px: float = c.x * T + 16; var py: float = c.y * T + 16
 				L += Vector2(px - x, py - y).length(); x = px; y = py
-			u.path_len = L
-			eta = max(eta, L / (u.d.spd * T))
-		if eta > 0:
-			for u in ground: u.fspd = max(u.d.spd * 0.35, min(u.d.spd, u.path_len / eta / T))
+			u.path_len = L; lens.append(L)
+		lens.sort()
+		var med: float = lens[lens.size() / 2] if lens.size() else 0.0
+		var body := ground.filter(func(u): return u.path_len <= med + STRAGGLE * T)
+		var eta := 0.0
+		for u in body: eta = max(eta, u.path_len / (u.d.spd * T))
+		if eta > 0 and body.size() > 1:
+			for u in body: u.fspd = max(u.d.spd * 0.35, min(u.d.spd, u.path_len / eta / T))
 	for u in escorts:
 		u.order = "escort"; u.esc = fighters.duplicate(); u.ecx = wx; u.ecy = wy; u.target = null; u.path = []; u.rp = 0.0; u.fspd = 0.0
 
