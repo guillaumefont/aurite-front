@@ -30,5 +30,16 @@ func _ready():
 	for m in D.MISSIONS:
 		s.new_game("normal", {"mission": m}); for i in 200: s.step(0.05)
 		print(m.title, " ", s.ents.size(), " ", s.obj_text())
+	# formation move: a unit far behind must not slow the main body down
+	s.new_game("normal", {"fac": "vanguard"})
+	var bx: float = (D.P0.x + 4) * D.T; var by: float = (D.P0.y - 4) * D.T
+	var near := []
+	for i in 3: near.append(s.spawn_unit(0, "rifle", bx + i * D.T, by))
+	var far = s.spawn_unit(0, "rifle", bx + 30 * D.T, by - 25 * D.T)
+	s.group_move(near + [far], bx + 2 * D.T, by - 6 * D.T, "move")
+	var slow := near.filter(func(u): return u.fspd > 0 and u.fspd < u.d.spd * 0.6)
+	print("formation near fspd=", near.map(func(u): return snappedf(u.fspd, 0.01)), " far fspd=", far.fspd, " spd=", far.d.spd)
+	if slow.size() or far.path.is_empty():
+		print("FORMATION TEST FAILED"); get_tree().quit(1); return
 	print("SIM TEST DONE")
 	get_tree().quit()

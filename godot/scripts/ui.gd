@@ -417,6 +417,7 @@ class BuildItem extends Control:
 	var icon: Texture2D
 	var prog := 0.0
 	var is_ready := false
+	var active := false
 	var n := 0
 	var locked := false
 	var lp_t := -1.0
@@ -454,7 +455,8 @@ class BuildItem extends Control:
 		draw_string(f, Vector2(2, 60), nm, HORIZONTAL_ALIGNMENT_CENTER, size.x - 4, fs, Color(UI.C_FG, a))
 		var cost := str(d.cost) + (" · locked" if locked else "")
 		draw_string(ui.f_disp, Vector2(2, 73), cost, HORIZONTAL_ALIGNMENT_CENTER, size.x - 4, 11, Color(UI.C_AUR, a) if not locked else Color(UI.C_DIM, a))
-		if prog > 0 and not is_ready:
+		if active and not is_ready:
+			draw_style_box(UI.sb(Color(0, 0, 0, 0), UI.C_AUR), Rect2(Vector2.ZERO, size))
 			# darken the part still to build, clockwise from the top
 			var c := size / 2; var r := size.length() / 2
 			var pts := PackedVector2Array([c])

@@ -244,7 +244,9 @@ func refresh_panel(_force := false) -> void:
 		else:
 			n = q.queue.count(it.type) + (1 if q.cur == it.type else 0)
 			if q.cur == it.type: prog = q.prog
-		it.locked = locked; it.n = n; it.prog = prog; it.is_ready = ready
+		# active from the moment it is ordered, even before any aurite is paid (prog still 0)
+		var active: bool = q.cur == it.type or (it.cat != "bld" and q.cur == "" and q.queue.size() > 0 and q.queue[0] == it.type)
+		it.locked = locked; it.n = n; it.prog = prog; it.is_ready = ready; it.active = active
 		if it.visible: it.queue_redraw()
 	for c in U.tabs:
 		var q: Dictionary = tm.prod[c]
