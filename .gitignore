@@ -1,0 +1,21 @@
+# Godot
+.godot/
+*.translation
+export_credentials.cfg
+godot/build/
+
+# Android builds
+*.apk
+*.aab
+*.idsig
+android-webview/build/
+
+# Release keystores (the debug keystore in android-webview/ is tracked on purpose)
+*.jks
+release.keystore
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
