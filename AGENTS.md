@@ -3,8 +3,8 @@
 ## Pull requests
 
 - Work on a branch and open a PR against `main`.
-- **You may merge your PR yourself once CI is green** (Builds and Headless sim pass on the PR's
-  latest commit, and it has no merge conflict). Guillaume, 2026-11-13. Never merge on red or pending CI,
+- **Merge your PR as soon as CI is green, without asking** (Builds and Headless sim pass on the PR's latest
+  commit, and it has no merge conflict). Guillaume, 2026-11-13. Never merge on red or pending CI,
   and never skip or disable a test to get green.
 - Add a **Try it** section to the PR body with the preview APK, once the PR number is known:
 
@@ -48,6 +48,15 @@ cd godot
 godot --headless --import
 godot --headless tests/sim_test.tscn   # must end with SIM TEST DONE and no SCRIPT ERROR
 ```
+
+## Audio and UI on phones
+
+- Sounds come from `godot/tools/synth.py` (`python3 tools/synth.py .` from `godot/`). It sets the levels for phone
+  speakers: effects are normalised one by one with a squeezed range, and the march gets +9 dB with a soft knee.
+  To check that the game makes sound without a sound card, record a run with `--write-movie out.avi --fixed-fps 20`
+  and measure the audio track with ffmpeg.
+- `main.gd _on_resize` scales the UI on mobile from the screen DPI (`content_scale_factor`, about 150 UI units per
+  inch). Test a phone layout with `AF_DPI=400 ... --resolution 2410x1080`.
 
 ## Keeping this file up to date
 
