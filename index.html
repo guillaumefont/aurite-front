@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aurite Front</title>
+<style>
+  :root { --bg: #0b0f12; --panel: #141a1e; --line: #2a353c; --fg: #e4ebee; --dim: #8b9aa3; --aurite: #f0b93f; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+         background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; text-align: center; }
+  main { max-width: 26rem; padding: 0 16px; }
+  h1 { margin: 0 0 .25rem; letter-spacing: .04em; }
+  .build { color: var(--dim); font-size: .85rem; margin: 0 0 1.5rem; }
+  a.apk { display: inline-block; padding: .8rem 1.4rem; border-radius: 4px; background: var(--aurite);
+          color: #1a1306; font-weight: 600; text-decoration: none; }
+  p.small { color: var(--dim); font-size: .9rem; }
+  a { color: var(--aurite); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Aurite Front</h1>
+  <p class="build">Build 309ee90</p>
+  <p><a class="apk" href="aurite-front.apk">Download the Android APK</a></p>
+  <p class="small">Open the file on your phone and allow installs from unknown apps.
+    Every build is signed with the same test key, so a new one installs over the old one.</p>
+  <p class="small">Once installed, the game updates itself: it fetches each new build on launch and applies it
+    on the next start (tap the build line at the top of the menu to restart right away). Only some builds,
+    flagged in that line, need this APK again.</p>
+  <p class="small"><a href="web-3d/">Play the 3D web version in the browser</a> (the older version the Godot port is based on).</p>
+</main>
+</body>
+</html>
