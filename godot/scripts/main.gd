@@ -311,7 +311,7 @@ func show_start() -> void:
 		if camp_open(C.id): cur = C
 		if camp_open(C.id) and camp_prog(C.id) < C.missions.size(): cur = C; break
 	var dn := mini(camp_prog(cur.id), cur.missions.size())
-	var nxt: String = ("Continue  ·  Operation " + cur.missions[dn].title) if dn < cur.missions.size() else "Every campaign won  ·  replay any mission"
+	var nxt: String = ("Next: " + cur.missions[dn].title) if dn < cur.missions.size() else "All won: replay any mission"
 	U.set_camp_tile(nxt, "%s · %s  ·  %d of %d secured" % [cur.num, cur.name, dn, cur.missions.size()])
 	U.show_overlay("start")
 	paused = true

@@ -148,7 +148,11 @@ in your PR, keep it short, and mention the change in the PR description.
   `restyle`/`set_on` give them cached chamfered olive plates (`hsb`) with brass ticks. Icons are vector glyphs in `UI.glyph`
   (aur, pwr, atk, stop, form, inf, veh, air, map, build, repair, sell, up, launch, obj, lock, ...), no image files.
   Readouts sit on `UI.Plate` (`plate_sb`, optional coloured left bar). Health bars: `main._hp_bar`; order prompts: `main._order_banner`.
-  Keep the group chips (`groups_box`) clear of the objective box and the command rows at `AF_DPI=400` (only ~490 UI units tall).
+  The UI is 600 units tall divided by `content_scale_factor` (capped at 1.5), so a high-DPI phone has only ~400 UI units
+  of height: Guillaume's phone hits the cap (2026-11-14, menu was cut off). Check menus and HUD with `AF_DPI=520` as well
+  as 400. Group chips are pinned under the OBJECTIVE button; the objective box opens over them.
+- Menus (2026-11-14, "too much small text"): few words, nothing under 12-13 UI units except the build line; the start
+  screen is title + two doors + field manual, the briefing is two columns with difficulty and Begin on one row.
 - 3D look (2026-11-14): `Models.LOOK` is pasted into both lit shaders (hemisphere shading, drifting cloud shadows,
   silhouette rim; off when `fog_on` is 0, as for the build icons). Filmic tone, mild grading and bloom on emissive parts
   are in `View3D._ready`, and turned off on the GL Compatibility fallback, which already renders darker. Water depth and
