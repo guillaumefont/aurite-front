@@ -17,6 +17,7 @@ var sk_fac := "vanguard"
 var last_opt := {"fac": "vanguard"}
 var cur_tab := "bld"
 var brief_i := 0
+var camp_id := "ashen"
 var icons_for := ""
 var headless := false
 
@@ -101,8 +102,10 @@ func end_game(win: bool) -> void:
 	U.btn.end_eye.text = (("Mission %d · %s %s" % [M.idx + 1, M.title, "complete" if win else "failed"]) if M else (en + " eliminated" if win else me + " base lost")).to_upper()
 	U.btn.end_title.text = "VICTORY" if win else "DEFEAT"
 	U.set_end_result(win)
-	if M and win: camp_save(M.idx)
-	U.btn.next.visible = M != null and win and M.idx < D.MISSIONS.size() - 1
+	U.btn.end_why.text = S.end_why if (M and not win) else ""
+	U.btn.end_why.visible = U.btn.end_why.text != ""
+	if M and win: camp_save(M.camp, M.idx)
+	U.btn.next.visible = M != null and win and M.idx < D.camp(M.camp).missions.size() - 1
 	U.btn.again.text = ("REPLAY" if win else "RETRY") if M else "PLAY AGAIN"
 	A.music_stop()
 	U.set_end_stats([["Time", D.fmt(S.time)], ["Aurite mined", Sim._thousands(S.stats.mined)], ["Units trained", S.stats.built], ["Enemies destroyed", S.stats.killed], ["Losses", S.stats.lost]])
@@ -110,36 +113,49 @@ func end_game(win: bool) -> void:
 	A.play("ready" if win else "alert")
 
 # ---------------- game flow ----------------
-func camp_prog() -> int:
-	if not FileAccess.file_exists("user://camp.json"): return 0
-	var f := FileAccess.open("user://camp.json", FileAccess.READ)
+## Progress per campaign: {"ashen": missions won, "vanguard": ...}. The old single-campaign save is ignored.
+func _camp_file() -> Dictionary:
+	if not FileAccess.file_exists("user://campaigns.json"): return {}
+	var f := FileAccess.open("user://campaigns.json", FileAccess.READ)
 	var d = JSON.parse_string(f.get_as_text())
-	return int(d.get("done", 0)) if d is Dictionary else 0
+	return d if d is Dictionary else {}
 
-func camp_save(i: int) -> void:
-	var f := FileAccess.open("user://camp.json", FileAccess.WRITE)
-	if f: f.store_string(JSON.stringify({"done": max(camp_prog(), i + 1)}))
+func camp_prog(id: String) -> int:
+	return int(_camp_file().get(id, 0))
+
+func camp_save(id: String, i: int) -> void:
+	var d := _camp_file()
+	d[id] = max(int(d.get(id, 0)), i + 1)
+	var f := FileAccess.open("user://campaigns.json", FileAccess.WRITE)
+	if f: f.store_string(JSON.stringify(d))
+
+func pick_campaign(id: String) -> void:
+	camp_id = id
+	U.render_missions(D.camp(id), camp_prog(id))
 
 func show_start() -> void:
-	U.render_missions(camp_prog())
+	U.render_missions(D.camp(camp_id), camp_prog(camp_id))
 	U.show_overlay("start")
 	paused = true
 	A.music_stop()
 
 func open_brief(i: int) -> void:
 	brief_i = i
-	var m: Dictionary = D.MISSIONS[i]
-	U.btn.br_eye.text = ("Mission %d of %d" % [i + 1, D.MISSIONS.size()]).to_upper()
+	var C := D.camp(camp_id)
+	var m: Dictionary = C.missions[i]
+	U.btn.br_eye.text = ("%s  //  Mission %d of %d" % [C.name, i + 1, C.missions.size()]).to_upper()
 	U.btn.br_title.text = m.title.to_upper()
+	U.btn.br_theatre.text = (m.theatre + "  ·  " + D.THEMES[m.map.theme].name).to_upper()
 	U.btn.br_text.text = m.brief
+	U.set_brief_heroes(m.heroes, C.fac)
 	U.btn.br_obj.text = "\n".join(m.obj.map(func(o): return "•  " + o))
 	U.show_overlay("brief")
 
 func begin_mission() -> void:
-	play({"mission": D.MISSIONS[brief_i]})
+	play({"mission": D.camp(camp_id).missions[brief_i]})
 
 func next_mission() -> void:
-	open_brief(min(D.MISSIONS.size() - 1, brief_i + 1))
+	open_brief(min(D.camp(camp_id).missions.size() - 1, brief_i + 1))
 
 func play(opt: Dictionary) -> void:
 	last_opt = opt
@@ -155,7 +171,7 @@ func new_game(d: String, opt: Dictionary) -> void:
 	V.build_world()
 	S.update_vision()
 	V.cam_z = 1.0
-	V.center_on(D.P0.x * T + 16, (D.P0.y - 1) * T)
+	V.center_on(S.p0.x * T + 16, (S.p0.y - 1) * T)
 	if icons_for != S.teams[0].fac and not headless: render_icons(S.teams[0].fac)
 	select_tab("bld"); refresh_panel(true); update_cmd(); end_placing()
 	U.obj_box.visible = S.mission != null
@@ -328,7 +344,7 @@ func confirm_place() -> void:
 # ---------------- commands ----------------
 func squad_btn(k: String) -> void:
 	if S.teams.is_empty(): return
-	var a := S.ents.filter(func(e): return e.alive and e.kind == "u" and e.team == 0 and not e.d.harv and not e.d.eng and (k == "all" or ((e.order == "none" and e.target == null) if k == "idle" else e.d.cat == k)))
+	var a := S.ents.filter(func(e): return e.alive and e.kind == "u" and e.team == 0 and not e.captive and not e.d.harv and not e.d.eng and (k == "all" or ((e.order == "none" and e.target == null) if k == "idle" else e.d.cat == k)))
 	squad_key = k if a.size() else ""; squad_set = a
 	S.set_sel(a)
 	update_cmd()
@@ -408,7 +424,7 @@ func pick(sx: float, sy: float, wx: float, wy: float) -> Ent:
 	V.update_cam()
 	var best: Ent = null; var bd := 1e9
 	for e in S.ents:
-		if not e.alive or e.kind != "u": continue
+		if not e.alive or e.kind != "u" or e.captive: continue
 		if e.team != 0 and not S.visible_to_player(e): continue
 		var h: float = S.h_at(e.x, e.y) + (D.ALT if e.d.air else 0.0)
 		var p := V.w2s(e.x, e.y, h + D.UH[e.type] * .45)
@@ -508,7 +524,7 @@ func box_select(x0: float, y0: float, x1: float, y1: float) -> void:
 	V.update_cam()
 	var r := Rect2(Vector2(min(x0, x1), min(y0, y1)), Vector2(abs(x1 - x0), abs(y1 - y0))).grow(6)
 	var us := S.ents.filter(func(e):
-		if not e.alive or e.kind != "u" or e.team != 0: return false
+		if not e.alive or e.kind != "u" or e.team != 0 or e.captive: return false
 		var p := V.w2s(e.x, e.y, S.h_at(e.x, e.y) + .2 + (D.ALT if e.d.air else 0.0))
 		return p.z > 0 and r.has_point(Vector2(p.x, p.y)))
 	var cb := us.filter(func(u): return not u.d.harv)
@@ -688,6 +704,7 @@ func draw_hud(c: Control) -> void:
 			c.draw_rect(Rect2(x - 1, y + 4, w + 2, 4), Color(0, 0, 0, .75)); c.draw_rect(Rect2(x, y + 5, w * e.load / D.HARV_CAP, 2), Color("f0b93f"))
 		if is_b and e.repairing:
 			c.draw_string(U.f_disp7, Vector2(p.x - 5, y - 5 + sin(S.time * 6) * 2), "+", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("7fd68e"))
+	_draw_mission_marks(c)
 	# floating "+N" aurite numbers (refinery deliveries, sales)
 	for p in S.parts:
 		if p.k != "txt": continue
@@ -708,6 +725,48 @@ func draw_hud(c: Control) -> void:
 	elif amove: c.draw_string(f, Vector2(max(8.0, vr.size.x / 2 - 110), vr.size.y - 64), "ATTACK-MOVE: TAP A DESTINATION", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(.9, .28, .25, .95))
 	elif gest != null and gest.mode == "face" and pv_from != null: c.draw_string(f, Vector2(max(8.0, vr.size.x / 2 - 110), vr.size.y - 64), "RELEASE TO FORM UP FACING THIS WAY", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(.5, .84, .56, .95))
 
+## Campaign markers over the 3D view: hero chevrons, prisoners, convoy trucks, targets, objective labels.
+func _draw_mission_marks(c: Control) -> void:
+	if S.mission == null: return
+	var f: Font = U.f_disp7
+	var g = S.goal()
+	var tg: Array = S.goal_targets(g) if g != null and (g.k == "kill" or g.k == "capture") else []
+	for e in S.ents:
+		if not e.alive: continue
+		var hero: bool = e.kind == "u" and e.d.hero
+		if not (hero or e.captive or e.tag == "vip" or tg.has(e)): continue
+		if e.team != 0 and not S.visible_to_player(e): continue
+		if e.captive and S.vis[int(e.y / T) * 64 + int(e.x / T)] == 0: continue
+		var top: float = (D.BH[e.type] + .55) if e.kind == "b" else (D.UH[e.type] + .5 + (D.ALT if e.d.air else 0.0))
+		var p := V.w2s(e.x, e.y, S.h_at(e.x, e.y) + top)
+		if p.z < 0: continue
+		var bob := sin(S.time * 4 + e.id) * 2
+		if e.captive:
+			c.draw_string_outline(f, Vector2(p.x - 4, p.y + bob), "!", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, 4, Color(0, 0, 0, .8))
+			c.draw_string(f, Vector2(p.x - 4, p.y + bob), "!", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color("f0b93f"))
+		elif tg.has(e):
+			var col := Color("ff5a52") if g.k == "kill" else Color("f0b93f")
+			var q := Vector2(p.x, p.y - 4 + bob)
+			c.draw_colored_polygon(PackedVector2Array([q + Vector2(0, -9), q + Vector2(7, 0), q + Vector2(0, 9), q + Vector2(-7, 0)]), Color(0, 0, 0, .6))
+			c.draw_colored_polygon(PackedVector2Array([q + Vector2(0, -7), q + Vector2(5, 0), q + Vector2(0, 7), q + Vector2(-5, 0)]), col)
+		elif hero:
+			var col: Color = Color("f0b93f") if e.team == 0 else Color("ff5a52")
+			var q := Vector2(p.x, p.y + bob * .5)
+			for k in 2:
+				var o := Vector2(0, k * 5)
+				c.draw_polyline(PackedVector2Array([q + o + Vector2(-7, -3), q + o + Vector2(0, 3), q + o + Vector2(7, -3)]), Color(0, 0, 0, .7), 4)
+				c.draw_polyline(PackedVector2Array([q + o + Vector2(-7, -3), q + o + Vector2(0, 3), q + o + Vector2(7, -3)]), col, 2)
+		else:
+			c.draw_rect(Rect2(p.x - 4, p.y - 4 + bob * .5, 8, 8), Color(0, 0, 0, .7))
+			c.draw_rect(Rect2(p.x - 3, p.y - 3 + bob * .5, 6, 6), Color("e4ebee"))
+	for m in S.marks():
+		var q := V.w2s(m[0] * T + 16, m[1] * T + 16, S.h_at(m[0] * T + 16, m[1] * T + 16) + 1.6)
+		if q.z < 0 or g == null or g.label == "": continue
+		var txt: String = g.label.to_upper()
+		var tw: float = U.f_disp.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+		c.draw_string_outline(U.f_disp, Vector2(q.x - tw / 2, q.y), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, 4, Color(0, 0, 0, .75))
+		c.draw_string(U.f_disp, Vector2(q.x - tw / 2, q.y), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("f0b93f"))
+
 # ---------------- minimap ----------------
 func render_mini() -> void:
 	var m = U.mini; var img: Image = m.img
@@ -716,7 +775,7 @@ func render_mini() -> void:
 		var v: int = S.vis[i]; var k := i * 4
 		if v == 0:
 			data[k] = 4; data[k + 1] = 6; data[k + 2] = 8; data[k + 3] = 255; continue
-		var col: Color = D.TCOL[S.terr[i]] * 0.9
+		var col: Color = D.tcol(S.theme)[S.terr[i]] * 0.9
 		if S.ore[i]: col = Color8(220, 170, 60)
 		if v == 1: col = col * 0.55
 		data[k] = int(col.r * 255); data[k + 1] = int(col.g * 255); data[k + 2] = int(col.b * 255); data[k + 3] = 255
@@ -740,6 +799,19 @@ func draw_mini_overlay(c: Control) -> void:
 	var cs := [Vector2(0, 0), Vector2(vr.size.x, 0), Vector2(vr.size.x, vr.size.y), Vector2(0, vr.size.y)].map(func(p): return (V.s2w(p.x, p.y) / T * s).clamp(Vector2.ZERO, c.size))
 	cs.append(cs[0])
 	c.draw_polyline(PackedVector2Array(cs), Color.WHITE, 1.0)
+	var pulse := 0.6 + 0.4 * sin(S.time * 4)
+	for m in S.marks():
+		var col: Color = [Color("f0b93f"), Color("7fd68e"), Color("ff5a52"), Color("f0b93f")][m[3] + 1]
+		c.draw_arc(Vector2(m[0] + .5, m[1] + .5) * s, max(3.0, m[2] * s.x), 0, TAU, 20, Color(col, pulse), 1.5)
+	var g = S.goal()
+	if g != null and (g.k == "kill" or g.k == "capture"):
+		for e in S.goal_targets(g):
+			if e.kind == "b" or S.visible_to_player(e):
+				var q := Vector2(e.x / T, e.y / T) * s
+				c.draw_colored_polygon(PackedVector2Array([q + Vector2(0, -4), q + Vector2(4, 0), q + Vector2(0, 4), q + Vector2(-4, 0)]), Color(Color("ff5a52") if g.k == "kill" else Color("f0b93f"), pulse))
+	for e in S.ents:
+		if e.alive and e.captive:
+			c.draw_circle(Vector2(e.x / T, e.y / T) * s, 2.5, Color(Color("f0b93f"), pulse))
 	if S.ping != null and S.time - S.ping.t < 4:
 		var f := fmod(S.time - S.ping.t, 1.0)
 		c.draw_arc(Vector2(S.ping.x, S.ping.y) / T * s, 4 + f * 14, 0, TAU, 24, Color(1, .35, .32, 1 - f), 2)
@@ -807,6 +879,9 @@ func _autotest(dir: String) -> void:
 	var mode := OS.get_environment("AF_MODE")
 	if mode == "menus":
 		await _menu_shots(dir); get_tree().quit(); return
+	if mode == "camp":
+		await _camp_shots(dir); get_tree().quit(); return
+	if OS.get_environment("AF_CAMP") != "": camp_id = OS.get_environment("AF_CAMP")
 	if mode.begins_with("m"):
 		open_brief(int(mode.substr(1)))
 		await get_tree().create_timer(0.5).timeout
@@ -875,6 +950,29 @@ func _menu_shots(dir: String) -> void:
 	S.over = true; end_game(true)
 	await get_tree().create_timer(1.6).timeout
 	await _shot(dir + "/05_end.png")
+
+## AF_MODE=camp: the campaign menu, then every mission's briefing and its opening view, zoomed out.
+func _camp_shots(dir: String) -> void:
+	for C in D.CAMPAIGNS:
+		pick_campaign(C.id)
+		await get_tree().create_timer(0.4).timeout
+		await _shot(dir + "/%s_menu.png" % C.id)
+		for i in C.missions.size():
+			open_brief(i)
+			await get_tree().create_timer(0.3).timeout
+			await _shot(dir + "/%s_%d_brief.png" % [C.id, i + 1])
+			begin_mission()
+			for k in 60:
+				S.step(0.05)
+			await get_tree().create_timer(1.0).timeout
+			await _shot(dir + "/%s_%d_start.png" % [C.id, i + 1])
+			paused = true
+			V.cam_z = 0.5; V.clamp_cam(); V.fog_clear(true)
+			var m = S.marks()
+			if m.size(): V.center_on(m[0][0] * T, m[0][1] * T)
+			await get_tree().create_timer(0.5).timeout
+			await _shot(dir + "/%s_%d_wide.png" % [C.id, i + 1])
+			paused = true
 
 ## AF_MODE=b: every building model, then the build, sell and collapse animations and a harvester at work.
 func _bld_test(dir: String) -> void:

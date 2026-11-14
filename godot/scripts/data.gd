@@ -51,6 +51,12 @@ var UN := {
 	"medic": {"name": "Field Medic", "cat": "inf", "cost": 150, "time": 5, "hp": 50, "spd": 1.1, "range": 2.2, "sight": 5, "heal": 9, "rof": 0.7, "armor": "inf", "r": 6, "req": ["barracks"]},
 	"engineer": {"name": "Engineer", "cat": "inf", "cost": 500, "time": 8, "hp": 45, "spd": 1.05, "sight": 4, "armor": "inf", "r": 6, "eng": true, "req": ["barracks", "factory"]},
 	"arty": {"name": "Howler Mortar", "cat": "veh", "cost": 950, "time": 13, "hp": 170, "spd": 1.4, "range": 9, "minr": 2.2, "sight": 6, "dmg": 65, "rof": 3.6, "weapon": "arty", "splash": 46, "armor": "light", "r": 12, "turret": true, "req": ["factory", "repair"]},
+	# heroes and mission-only units: never trained, a mission brings them
+	"vey": {"name": "Kestrel Vey", "fac": "ashen", "cat": "inf", "cost": 0, "time": 1, "hp": 460, "spd": 1.35, "range": 5.2, "sight": 8, "dmg": 30, "rof": 0.7, "weapon": "arc", "armor": "inf", "r": 7, "hero": true, "req": ["never"]},
+	"furnace": {"name": "The Furnace", "fac": "ashen", "cat": "veh", "cost": 0, "time": 1, "hp": 1500, "spd": 1.3, "range": 4.8, "sight": 7, "dmg": 72, "rof": 1.6, "weapon": "arc", "armor": "heavy", "r": 16, "hero": true, "req": ["never"]},
+	"harrow": {"name": "Ilse Harrow", "fac": "vanguard", "cat": "inf", "cost": 0, "time": 1, "hp": 420, "spd": 1.3, "range": 7.5, "sight": 9, "dmg": 58, "rof": 1.4, "weapon": "rail", "armor": "inf", "r": 7, "hero": true, "req": ["never"]},
+	"saint": {"name": "Iron Saint", "fac": "vanguard", "cat": "veh", "cost": 0, "time": 1, "hp": 1900, "spd": 1.15, "range": 5.6, "sight": 7, "dmg": 72, "rof": 1.3, "weapon": "shell", "armor": "heavy", "r": 17, "turret": true, "hero": true, "req": ["never"]},
+	"truck": {"name": "Convoy Truck", "cat": "veh", "cost": 0, "time": 1, "hp": 520, "spd": 1.6, "sight": 5, "armor": "heavy", "r": 13, "req": ["never"]},
 	"harv": {"name": "Harvester", "cat": "veh", "cost": 1200, "time": 14, "hp": 650, "spd": 1.35, "sight": 4, "armor": "heavy", "r": 14, "harv": true, "req": ["factory", "refinery"]},
 }
 
@@ -59,7 +65,7 @@ const MOD := {
 	"arc": {"inf": 1.1, "light": 1.05, "heavy": 0.85, "bld": 0.7}, "flak": {"inf": 0.25, "light": 1.2, "heavy": 0.8, "bld": 0.1},
 	"sw": {"inf": 1, "light": 1, "heavy": 1, "bld": 1}, "arty": {"inf": 0.9, "light": 0.8, "heavy": 0.6, "bld": 1.1},
 	"bullet": {"inf": 1, "light": 0.6, "heavy": 0.22, "bld": 0.25}, "rocket": {"inf": 0.35, "light": 1.1, "heavy": 1.15, "bld": 0.75},
-	"shell": {"inf": 0.45, "light": 0.9, "heavy": 1, "bld": 1},
+	"shell": {"inf": 0.45, "light": 0.9, "heavy": 1, "bld": 1}, "rail": {"inf": 1.4, "light": 0.9, "heavy": 0.5, "bld": 0.55},
 }
 const CATS := {
 	"bld": ["power", "refinery", "barracks", "factory", "turret", "flak", "wall", "repair", "comms", "helipad", "tech", "bastion", "pylon", "skyfall", "rift"],
@@ -81,20 +87,62 @@ const DIFF := {
 	"normal": {"prod": 1.0, "inc": 1.0, "first": 210, "start": 3000},
 	"hard": {"prod": 1.3, "inc": 1.35, "first": 140, "start": 4000},
 }
-## Team 0 (the player) is blue, team 1 (the AI) is red.
-var TEAMC := [
-	{"col": Color("#3fb4e8"), "dk": Color("#174a63"), "lt": Color("#a6e3ff")},
-	{"col": Color("#e0423a"), "dk": Color("#5e1512"), "lt": Color("#ffb0a8")},
-]
-const MINI_COL := [Color("#5cc8ff"), Color("#ff5a4f")]
+## Colours follow the faction: the Vanguard is blue, the Ashen Pact red. TEAMC and MINI_COL are
+## indexed by team and set for each match by set_team_colors().
+const FCOL := {
+	"vanguard": {"col": Color("#3fb4e8"), "dk": Color("#174a63"), "lt": Color("#a6e3ff"), "mini": Color("#5cc8ff")},
+	"ashen": {"col": Color("#e0423a"), "dk": Color("#5e1512"), "lt": Color("#ffb0a8"), "mini": Color("#ff5a4f")},
+}
+var TEAMC: Array = [FCOL.vanguard, FCOL.ashen]
+var MINI_COL: Array = [FCOL.vanguard.mini, FCOL.ashen.mini]
+
+## Returns true when the colours changed (cached models must be rebuilt).
+func set_team_colors(f0: String, f1: String) -> bool:
+	if TEAMC[0] == FCOL[f0] and TEAMC[1] == FCOL[f1]: return false
+	TEAMC = [FCOL[f0], FCOL[f1]]; MINI_COL = [FCOL[f0].mini, FCOL[f1].mini]
+	return true
 const TCOL := [Color8(74, 98, 50), Color8(112, 94, 64), Color8(158, 140, 98), Color8(98, 92, 86), Color8(34, 76, 98)]
+## Landscapes. Colours are sRGB 0..1. grass = base + noise * var. trees: "pine" (two cones), "snowpine" (pine with a white cap),
+## "broad" (round crowns), "dead" (bare trunks), "palm"-less on purpose: the valley has none.
+const THEMES := {
+	"temperate": {"name": "Green river country", "grass": [0.30, 0.42, 0.20], "gvar": [0.12, 0.10, 0.04], "dirt": [0.50, 0.40, 0.27], "sand": [0.68, 0.60, 0.42], "rock": [0.40, 0.37, 0.33],
+		"cliff": [0.44, 0.41, 0.37], "bed": [0.22, 0.30, 0.30], "trees": "pine", "tcol": ["3f6b2c", "4f7d33", "355e2a", "6b8a3a"], "trunk": "5a4130", "bush": "4f7a34", "stone": "8a8174",
+		"tden": 0.075, "bden": 0.085, "water": [0.227, 0.525, 0.659, 0.84], "sun": "fff0d8", "sunE": 1.05, "amb": "aeb6be", "ambE": 0.75},
+	"autumn": {"name": "Autumn foundry country", "grass": [0.42, 0.38, 0.18], "gvar": [0.14, 0.08, 0.03], "dirt": [0.50, 0.38, 0.25], "sand": [0.66, 0.57, 0.40], "rock": [0.42, 0.38, 0.34],
+		"cliff": [0.45, 0.40, 0.35], "bed": [0.22, 0.27, 0.26], "trees": "broad", "tcol": ["b4562a", "d08a2e", "8f3e22", "c7a03a"], "trunk": "4a3428", "bush": "8a6a2c", "stone": "857a6c",
+		"tden": 0.09, "bden": 0.08, "water": [0.25, 0.45, 0.50, 0.86], "sun": "ffe2b8", "sunE": 1.0, "amb": "b8aa9c", "ambE": 0.75},
+	"arid": {"name": "Dust flats", "grass": [0.62, 0.52, 0.32], "gvar": [0.10, 0.08, 0.05], "dirt": [0.58, 0.42, 0.26], "sand": [0.76, 0.66, 0.45], "rock": [0.56, 0.42, 0.30],
+		"cliff": [0.60, 0.44, 0.30], "bed": [0.36, 0.32, 0.24], "trees": "dead", "tcol": ["7a6a3a", "8a7a44", "6a5a32", "9a8a52"], "trunk": "5e4a36", "bush": "8c8550", "stone": "a08060",
+		"tden": 0.018, "bden": 0.05, "water": [0.36, 0.48, 0.44, 0.86], "sun": "fff2d0", "sunE": 1.12, "amb": "c4b8a4", "ambE": 0.78},
+	"snow": {"name": "Ironpine snowfields", "grass": [0.80, 0.83, 0.86], "gvar": [0.08, 0.07, 0.05], "dirt": [0.58, 0.56, 0.54], "sand": [0.70, 0.72, 0.74], "rock": [0.42, 0.43, 0.46],
+		"cliff": [0.48, 0.49, 0.52], "bed": [0.24, 0.32, 0.38], "trees": "snowpine", "tcol": ["24452f", "2c5236", "1f3d2a", "35603e"], "trunk": "4a3a30", "bush": "c6ccd0", "stone": "7c8088",
+		"tden": 0.085, "bden": 0.05, "water": [0.42, 0.60, 0.70, 0.90], "sun": "e8f0ff", "sunE": 0.95, "amb": "b0bccc", "ambE": 0.72},
+	"ash": {"name": "Cinder hills", "grass": [0.26, 0.24, 0.22], "gvar": [0.08, 0.06, 0.05], "dirt": [0.36, 0.29, 0.24], "sand": [0.46, 0.40, 0.34], "rock": [0.24, 0.22, 0.21],
+		"cliff": [0.30, 0.27, 0.25], "bed": [0.30, 0.12, 0.06], "trees": "dead", "tcol": ["2a2420", "322a24", "241e1a", "3a3028"], "trunk": "2a2420", "bush": "4a3e30", "stone": "4a4440",
+		"tden": 0.05, "bden": 0.04, "water": [0.85, 0.32, 0.10, 0.92], "lava": true, "sun": "ffc8a0", "sunE": 0.95, "amb": "a89c98", "ambE": 0.72},
+	"marsh": {"name": "Reedmarsh", "grass": [0.24, 0.34, 0.20], "gvar": [0.08, 0.10, 0.05], "dirt": [0.36, 0.33, 0.22], "sand": [0.48, 0.46, 0.32], "rock": [0.34, 0.34, 0.30],
+		"cliff": [0.38, 0.38, 0.33], "bed": [0.16, 0.22, 0.18], "trees": "broad", "tcol": ["2f4a26", "3a5a2c", "28401f", "4a5e30"], "trunk": "3e3226", "bush": "6a7a3a", "stone": "6e6c60",
+		"tden": 0.05, "bden": 0.16, "water": [0.20, 0.36, 0.34, 0.86], "sun": "f2ecd0", "sunE": 0.95, "amb": "a8b0a4", "ambE": 0.74},
+}
+## Dusk light for some missions: low warm sun, cooler shadows.
+const DUSK := {"sun": "ffa868", "sunE": 0.85, "amb": "8890a8", "ambE": 0.62}
+
+## Minimap colours for a landscape: grass, dirt, sand, rock, water.
+var _tcol := {}
+func tcol(theme: String) -> Array:
+	if not _tcol.has(theme):
+		var TH: Dictionary = THEMES[theme]
+		var c := func(a: Array) -> Color: return Color(a[0], a[1], a[2])
+		_tcol[theme] = [c.call(TH.grass), c.call(TH.dirt), c.call(TH.sand), c.call(TH.rock), c.call(TH.water)]
+	return _tcol[theme]
+
 const BH := {"hq": 1.55, "power": 1.25, "refinery": 1.3, "barracks": 0.95, "factory": 1.2, "turret": 0.7, "repair": 1.0, "wall": 0.6, "flak": 0.8, "comms": 2.2, "helipad": 0.5, "tech": 1.3, "bastion": 1.2, "pylon": 1.9, "skyfall": 1.0, "rift": 2.2}
-const UH := {"rifle": 0.5, "lancer": 0.55, "medic": 0.5, "engineer": 0.5, "ranger": 0.5, "pyro": 0.55, "buggy": 0.42, "raider": 0.45, "tank": 0.48, "scorpion": 0.4, "bulwark": 0.6, "arcc": 0.85, "arty": 0.55, "harv": 0.58, "skyhawk": 0.4, "wasp": 0.25}
+const UH := {"rifle": 0.5, "lancer": 0.55, "medic": 0.5, "engineer": 0.5, "ranger": 0.5, "pyro": 0.55, "buggy": 0.42, "raider": 0.45, "tank": 0.48, "scorpion": 0.4, "bulwark": 0.6, "arcc": 0.85, "arty": 0.55, "harv": 0.58, "skyhawk": 0.4, "wasp": 0.25, "vey": 0.62, "harrow": 0.62, "furnace": 0.95, "saint": 0.8, "truck": 0.6}
 
 const ALLB := ["power", "refinery", "barracks", "factory", "turret", "flak", "wall", "repair", "comms", "helipad", "tech", "bastion", "pylon", "skyfall", "rift"]
 const AI_ORDER := ["power", "refinery", "barracks", "power", "factory", "turret", "power", "refinery", "flak", "comms", "repair", "power", "DEF", "turret", "helipad", "power", "tech", "DEF", "power", "flak", "SW", "power", "DEF", "turret", "power"]
 
-var MISSIONS: Array = []
+var CAMPAIGNS: Array = []
 
 func _init() -> void:
 	for k in BLD:
@@ -105,57 +153,28 @@ func _init() -> void:
 	for k in UN:
 		var d: Dictionary = UN[k]
 		d.type = k
-		for kv in [["fac", ""], ["weapon", ""], ["dmg", 0], ["range", 0.0], ["rof", 1.0], ["air", false], ["turret", false], ["heal", 0], ["eng", false], ["harv", false], ["minr", 0.0], ["splash", 0.0], ["antiAir", false]]:
+		for kv in [["fac", ""], ["weapon", ""], ["dmg", 0], ["range", 0.0], ["rof", 1.0], ["air", false], ["turret", false], ["heal", 0], ["eng", false], ["harv", false], ["minr", 0.0], ["splash", 0.0], ["antiAir", false], ["hero", false]]:
 			if not d.has(kv[0]): d[kv[0]] = kv[1]
-	var m4tech: Array = []
-	for t in ALLB:
-		if t != "skyfall" and t != "rift": m4tech.append(t)
-	m4tech.append_array(["rifle", "lancer", "medic", "engineer", "ranger", "buggy", "tank", "arty", "bulwark", "harv", "skyhawk"])
-	MISSIONS = [
-		{"title": "Landfall", "tag": "Take the river crossing", "seed": 4242, "diff": "easy", "credits": [1800, 600],
-		 "brief": "Our landing barges made it across the Sable river at dawn. An Ashen Pact outpost watches the crossing from the north-east. Set up a foothold, train a strike team and wipe the outpost out before their main army notices.",
-		 "obj": ["Destroy every Ashen Pact unit and structure", "New: Field Medics keep your infantry alive"],
-		 "tech": ["power", "refinery", "barracks", "turret", "wall", "rifle", "lancer", "medic", "harv"], "aiTech": ["rifle", "lancer", "power"], "aiBuild": false, "aiFirst": 260,
-		 "pbase": [], "punits": [["rifle", 5], ["lancer", 2], ["medic", 1]],
-		 "ehq": "barracks", "ebase": ["power", "turret", "turret", "turret"], "eunits": [["rifle", 6], ["lancer", 3]], "goal": "destroy_all"},
-		{"title": "Gold Rush", "tag": "Fund the war effort", "seed": 777, "diff": "normal", "credits": [2500, 1500],
-		 "brief": "Command needs aurite, and fast. The valley floor is thick with it, but Ashen raiders on bikes will hit any harvester they can find. Build refineries, protect your harvesters and deliver 5,000 aurite before the window closes.",
-		 "obj": ["Deliver 5,000 aurite within 12 minutes", "Keep your Command Yard standing", "New: War Factory, Scout Buggies, Sentry Guns"],
-		 "tech": ["power", "refinery", "barracks", "factory", "turret", "wall", "rifle", "lancer", "medic", "buggy", "harv"], "aiTech": ["power", "turret", "rifle", "lancer", "raider", "harv"], "aiFirst": 150,
-		 "pbase": ["power"], "punits": [["rifle", 4], ["buggy", 1]],
-		 "ehq": "hq", "ebase": ["power", "power", "refinery", "barracks", "factory", "turret", "turret"], "eunits": [["rifle", 3], ["raider", 2]], "goal": "mine"},
-		{"title": "Hold the Ford", "tag": "Survive the counterattack", "seed": 1337, "diff": "normal", "credits": [5000, 0],
-		 "brief": "The Ashen Pact wants the ford back. Our engineers say reinforcements are nine minutes out. Dig in with Warden Tanks, Howler mortars and Flak Nests, because scouts report drones in their later waves.",
-		 "obj": ["Survive for 9 minutes", "New: Warden Tanks, Howler Mortars, Repair Bay, Flak Nest, Engineers"],
-		 "tech": ["power", "refinery", "barracks", "factory", "turret", "flak", "wall", "repair", "rifle", "lancer", "medic", "engineer", "buggy", "tank", "arty", "harv"], "aiBuild": false, "aiProd": false,
-		 "waves": {"first": 50, "every": 55},
-		 "pbase": ["power", "power", "refinery", "barracks", "factory"], "punits": [["tank", 2], ["rifle", 4], ["lancer", 2]],
-		 "ehq": "hq", "ebase": ["power", "power", "refinery", "barracks", "factory", "helipad", "turret", "turret", "pylon"], "eunits": [], "goal": "survive"},
-		{"title": "Broken Wing", "tag": "Ground their air wing", "seed": 9001, "diff": "normal", "credits": [6000, 5000],
-		 "brief": "Wasp drones are tearing up our supply lines. They fly from a helipad deep in the Ashen base, guided by a Comms Array. Knock out both. Our own Skyhawk gunships are cleared for this one, and Rangers can pick off their infantry from long range.",
-		 "obj": ["Destroy every enemy Helipad", "Destroy every enemy Comms Array", "New: Comms Array, Helipad, Skyhawk gunships, Rangers, Tech Lab, Bulwark Tanks"],
-		 "tech": m4tech,
-		 "aiTech": ["power", "refinery", "barracks", "factory", "turret", "flak", "repair", "pylon", "rifle", "lancer", "medic", "pyro", "raider", "scorpion", "arty", "harv", "wasp"], "aiFirst": 200,
-		 "pbase": ["power", "power", "refinery", "barracks", "factory", "comms"], "punits": [["tank", 2], ["lancer", 3], ["rifle", 3]],
-		 "ehq": "hq", "ebase": ["power", "power", "power", "refinery", "barracks", "factory", "comms", "helipad", "flak", "flak", "flak", "turret", "turret"], "eunits": [["wasp", 3], ["scorpion", 2], ["rifle", 4]], "goal": "air"},
-		{"title": "Ashfall", "tag": "End the war", "seed": 31337, "diff": "hard", "credits": [9000, 9000],
-		 "brief": "This is it. The Ashen Pact has finished a Rift Engine at their capital and it is already charging. Every system we have is unlocked, including our own Skyfall Battery. Break their base before the Rift Engine flattens yours.",
-		 "obj": ["Destroy all Ashen Pact forces", "Watch the Rift Engine timer: it hits your biggest cluster of buildings", "New: Bastion Cannon, Skyfall Battery"],
-		 "tech": null, "aiTech": null, "aiFirst": 160,
-		 "pbase": ["power", "power", "power", "refinery", "barracks", "factory", "comms", "repair"], "punits": [["tank", 3], ["bulwark", 1], ["lancer", 4], ["ranger", 2], ["medic", 2]],
-		 "ehq": "hq", "ebase": ["power", "power", "power", "power", "refinery", "refinery", "barracks", "factory", "comms", "helipad", "tech", "flak", "flak", "pylon", "pylon", "turret", "rift"], "eunits": [["scorpion", 3], ["arcc", 1], ["pyro", 3], ["wasp", 2], ["rifle", 4]], "goal": "rift", "riftCh": 60.0},
-	]
-	for i in MISSIONS.size():
-		MISSIONS[i].idx = i
-		for kv in [["aiBuild", true], ["aiProd", true], ["aiFirst", -1], ["waves", null], ["riftCh", 0.0]]:
-			if not MISSIONS[i].has(kv[0]): MISSIONS[i][kv[0]] = kv[1]
+	CAMPAIGNS = Campaign.all()
+	for c in CAMPAIGNS:
+		for i in c.missions.size():
+			var m: Dictionary = c.missions[i]
+			m.idx = i; m.camp = c.id; m.fac = c.fac
+			for kv in [["aiBuild", true], ["aiProd", true], ["aiFirst", -1], ["waves", null], ["swCh", 0.0], ["tech", null], ["aiTech", null], ["phq", true],
+					["pbase", []], ["punits", []], ["pheroes", []], ["ehq", "hq"], ["ebase", []], ["eunits", []], ["eheroes", []], ["posts", []], ["captives", []],
+					["events", []], ["keep", []], ["limit", 0.0], ["credits", [3000, 3000]], ["diff", "normal"], ["heroes", []], ["theatre", ""], ["pvip", []]]:
+				if not m.has(kv[0]): m[kv[0]] = kv[1]
+			for g in m.goals:
+				for kv in [["waves", null], ["done", null], ["label", ""], ["r", 2.5], ["who", "any"], ["need", 1], ["t", 0.0], ["types", []], ["tag", ""], ["protect", []], ["zone", null], ["zones", []], ["at", null], ["n", 0]]:
+					if not g.has(kv[0]): g[kv[0]] = kv[1]
+
+func camp(id: String) -> Dictionary:
+	for c in CAMPAIGNS:
+		if c.id == id: return c
+	return CAMPAIGNS[0]
 
 func def_of(t: String) -> Dictionary:
 	return BLD[t] if BLD.has(t) else UN[t]
-
-## Wave composition for "Hold the Ford", wave number n.
-func wave_list(n: int) -> Array:
-	return [["rifle", 3 + n], ["lancer", 1 + (n >> 1)], ["raider", 2 if n > 1 else 0], ["scorpion", n - 2 if n > 2 else 0], ["arty", 1 if n > 4 else 0], ["wasp", 2 if n > 5 else 0], ["pyro", 2 if n > 3 else 0]]
 
 static func fmt(t: float) -> String:
 	var s := int(ceil(max(0.0, t)))
