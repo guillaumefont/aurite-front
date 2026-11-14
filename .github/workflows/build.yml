@@ -2,7 +2,8 @@ name: Builds
 
 # Exports the Godot game (godot/) as an Android APK and publishes it on GitHub Pages
 # (gh-pages branch), next to a small download page and the 3D web version (web-3d/):
-#   main           -> https://<owner>.github.io/<repo>/aurite-front.apk
+#   main           -> https://<owner>.github.io/<repo>/aurite-front.apk (+ .pck and version.json,
+#                     which installed games use to update themselves: see godot/scripts/updater.gd)
 #   pull request N -> https://<owner>.github.io/<repo>/pr/N/aurite-front.apk
 # Each open PR keeps its own preview, linked in a comment on the PR; it is removed when
 # the PR is closed. The APK is also attached to each run as an artifact.
@@ -28,6 +29,7 @@ concurrency:
 env:
   GODOT_VERSION: 4.7.2
   APK_NAME: aurite-front.apk
+  PCK_NAME: aurite-front.pck # game pack for self-updates
 
 jobs:
   export:
@@ -114,12 +116,27 @@ jobs:
           base=$(sed -n 's/^version\/name="\(.*\)"/\1/p' export_presets.cfg | head -1)
           code=$((100 + GITHUB_RUN_NUMBER))
           name="${base}-${PR:+pr$PR.}b$GITHUB_RUN_NUMBER"
+          # Self-update (scripts/updater.gd): the game checks version.json next to its APK and downloads
+          # the game pack (aurite-front.pck) of a newer build. A pack only fits the "shell" it was built
+          # for: the engine, the project settings, the export preset, the updater and the launcher art.
+          # Change any of them and installed games ask for the new APK instead.
+          shell=$( { echo "$GODOT_VERSION"; cat project.godot export_presets.cfg scripts/updater.gd icon.png icon_fg.png icon_bg.png splash.png; } | sha256sum | cut -c1-16)
+          site="https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}/"
+          printf '{"build": %d, "name": "%s", "shell": "%s", "url": "%s", "main_url": "%s"}\n' "$GITHUB_RUN_NUMBER" "$name" "$shell" "$site${PR:+pr/$PR/}" "$site" > build.json
+          cat build.json
           sed -i "0,/^version\/code=.*/s//version\/code=$code/; 0,/^version\/name=.*/s//version\/name=\"$name\"/" export_presets.cfg
           grep -m2 '^version/' export_presets.cfg
           mkdir -p "$OUT/android"
           $RUNNER_TEMP/godot --headless --path . --export-release Android "$OUT/android/$APK_NAME"
           test -s "$OUT/android/$APK_NAME"
           ls -lh "$OUT/android/$APK_NAME"
+          $RUNNER_TEMP/godot --headless --path . --export-pack Android "$OUT/android/$PCK_NAME"
+          test -s "$OUT/android/$PCK_NAME"
+          ls -lh "$OUT/android/$PCK_NAME"
+          printf '{"build": %d, "name": "%s", "shell": "%s", "pck": "%s", "size": %d, "sha256": "%s", "apk": "%s", "commit": "%s"}\n' \
+            "$GITHUB_RUN_NUMBER" "$name" "$shell" "$PCK_NAME" "$(stat -c%s "$OUT/android/$PCK_NAME")" \
+            "$(sha256sum "$OUT/android/$PCK_NAME" | cut -d' ' -f1)" "$APK_NAME" "${GITHUB_SHA::7}" > "$OUT/android/version.json"
+          cat "$OUT/android/version.json"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -134,7 +151,7 @@ jobs:
           DEST: ${{ github.event.pull_request.number && format('pr/{0}', github.event.pull_request.number) || '.' }}
         run: |
           mkdir -p "$OUT/stage/web-3d"
-          cp "$OUT/android/$APK_NAME" "$OUT/stage/"
+          cp "$OUT/android/$APK_NAME" "$OUT/android/$PCK_NAME" "$OUT/android/version.json" "$OUT/stage/"
           cp .github/pages/index.html "$OUT/stage/"
           cp web-3d/index.html "$OUT/stage/web-3d/"
           sed -i "s/__BUILD__/${GITHUB_SHA::7}${PR:+ (PR #$PR)}/" "$OUT/stage/index.html"
