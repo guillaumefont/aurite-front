@@ -366,7 +366,7 @@ func _build_overlays() -> void:
 	seg(d, "mode", [["campaign", "Campaign"], ["skirmish", "Skirmish"]], "campaign", func(m): start_mode = m; camp_box.visible = m == "campaign"; sk_pane.visible = m == "skirmish")
 	camp_box = VBoxContainer.new(); camp_box.add_theme_constant_override("separation", 8); d.add_child(camp_box)
 	var co: Array = []
-	for C in D.CAMPAIGNS: co.append([C.id, C.num + " · " + C.name, D.FACS[C.fac].name + (" · start here" if C.num == "I" else " · a year later")])
+	for C in D.CAMPAIGNS: co.append([C.id, C.num + " · " + C.name, D.FACS[C.fac].name + (" · start here" if C.num == "I" else " · the sequel")])
 	seg(camp_box, "camp", co, D.CAMPAIGNS[0].id, func(id): main.pick_campaign(id))
 	camp_tag = lbl("", f_body, 12, W_SAND); camp_tag.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; camp_box.add_child(camp_tag)
 	camp_pane = VBoxContainer.new(); camp_pane.add_theme_constant_override("separation", 5); camp_box.add_child(camp_pane)
@@ -475,8 +475,20 @@ func set_brief_heroes(list: Array, fac: String) -> void:
 		var t := lbl(HERO_LINES.get(h, ""), f_body, 12, W_SAND); t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; v.add_child(t)
 		btn.br_heroes.add_child(p)
 
+## Greys out the campaign tabs that are still locked (a campaign opens when the one before it is won).
+func set_camp_locks(is_open: Callable) -> void:
+	for i in D.CAMPAIGNS.size():
+		var C: Dictionary = D.CAMPAIGNS[i]
+		var b: Button = seg_btns.camp[C.id]
+		var op: bool = is_open.call(C.id)
+		b.modulate.a = 1.0 if op else 0.55
+		var sub: Label = b.get_child(0).get_child(1)
+		sub.text = D.FACS[C.fac].name + ((" · start here" if i == 0 else " · the sequel") if op else " · locked")
+
+## done = -1: the campaign is locked (its tab still shows what is ahead, every mission classified).
 func render_missions(C: Dictionary, done: int) -> void:
-	camp_tag.text = C.tag
+	var locked := done < 0
+	camp_tag.text = ("Locked: finish %s to open this campaign. " % D.CAMPAIGNS[maxi(0, D.CAMPAIGNS.find(C) - 1)].name) + C.tag if locked else C.tag
 	_seg_pick("camp", C.id)
 	for ch in camp_pane.get_children(): ch.queue_free()
 	for i in C.missions.size():
