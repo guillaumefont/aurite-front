@@ -149,3 +149,7 @@ in your PR, keep it short, and mention the change in the PR description.
   (aur, pwr, atk, stop, form, inf, veh, air, map, build, repair, sell, up, launch, obj, lock, ...), no image files.
   Readouts sit on `UI.Plate` (`plate_sb`, optional coloured left bar). Health bars: `main._hp_bar`; order prompts: `main._order_banner`.
   Keep the group chips (`groups_box`) clear of the objective box and the command rows at `AF_DPI=400` (only ~490 UI units tall).
+- 3D look (2026-11-14): `Models.LOOK` is pasted into both lit shaders (hemisphere shading, drifting cloud shadows,
+  silhouette rim; off when `fog_on` is 0, as for the build icons). Filmic tone, mild grading and bloom on emissive parts
+  are in `View3D._ready`, and turned off on the GL Compatibility fallback, which already renders darker. Water depth and
+  shore foam come from a heightmap texture of `S.H` (`height_tex`), not the depth buffer (it read empty here).

@@ -13,11 +13,13 @@ shader_type spatial;
 render_mode diffuse_lambert, specular_disabled;
 uniform sampler2D fog_tex : filter_linear, repeat_disable;
 uniform float fog_on = 1.0;
+%LOOK%
 void fragment() {
 	vec3 wp = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	float f = mix(1.0, texture(fog_tex, wp.xz / 64.0).r, fog_on);
-	ALBEDO = COLOR.rgb * COLOR.a * f;
-	EMISSION = COLOR.rgb * (1.0 - COLOR.a) * f;
+	float sh = look_shade(wp, normalize(wn), fog_on, TIME);
+	ALBEDO = COLOR.rgb * COLOR.a * f * sh;
+	EMISSION = (COLOR.rgb * (1.0 - COLOR.a) + look_rim(NORMAL, VIEW, COLOR.rgb) * COLOR.a * fog_on) * f;
 }
 """
 
@@ -29,28 +31,51 @@ render_mode diffuse_lambert, specular_disabled, cull_disabled;
 uniform sampler2D fog_tex : filter_linear, repeat_disable;
 uniform float fog_on = 1.0;
 uniform float cut_y = 100.0;
+%LOOK%
 void fragment() {
 	vec3 wp = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	if (wp.y > cut_y) discard;
 	float f = mix(1.0, texture(fog_tex, wp.xz / 64.0).r, fog_on);
 	float seam = 1.0 - smoothstep(0.0, 0.045, cut_y - wp.y);
-	ALBEDO = mix(COLOR.rgb * COLOR.a, vec3(0.0), seam * 0.6) * f;
+	ALBEDO = mix(COLOR.rgb * COLOR.a, vec3(0.0), seam * 0.6) * f * look_shade(wp, normalize(wn), fog_on, TIME);
 	EMISSION = (COLOR.rgb * (1.0 - COLOR.a) + vec3(1.0, 0.5, 0.12) * seam * 0.85) * f;
 }
 """
+## Shared look for both lit shaders, pasted in place of %LOOK% (no include file, so nothing extra to export).
+const LOOK := """
+// Shared look for the lit low-poly materials (Models.LIT_SHADER and CUT_SHADER):
+// hemisphere shading so faces turned down read darker, drifting cloud shadows, and a soft rim on silhouettes.
+// `wn` is the world normal from vertex(); `amt` (fog_on) turns clouds and rim off for the build-menu icons.
+varying vec3 wn;
+void vertex() {
+	wn = (MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz;
+}
+float look_shade(vec3 wp, vec3 n, float amt, float t) {
+	float hemi = mix(0.74, 1.06, clamp(n.y * 0.5 + 0.5, 0.0, 1.0));
+	vec2 q = wp.xz * 0.075 + vec2(t * 0.022, t * 0.013);
+	float c = sin(q.x * 1.7 + sin(q.y * 1.3) * 1.6) * sin(q.y * 1.9 + sin(q.x * 0.8) * 1.4);
+	float cloud = 1.0 - amt * 0.13 * smoothstep(-0.1, 0.8, c);
+	return hemi * cloud;
+}
+vec3 look_rim(vec3 n_view, vec3 v_view, vec3 base) {
+	float r = pow(1.0 - clamp(dot(n_view, v_view), 0.0, 1.0), 3.0);
+	return (vec3(1.0, 0.86, 0.66) * 0.10 + base * 0.12) * r;
+}
+"""
+
 static var cut_shader: Shader
 static var fog_texture: Texture2D
 
 static func cut_material() -> ShaderMaterial:
 	if cut_shader == null:
-		cut_shader = Shader.new(); cut_shader.code = CUT_SHADER
+		cut_shader = Shader.new(); cut_shader.code = CUT_SHADER.replace("%LOOK%", LOOK)
 	var m := ShaderMaterial.new(); m.shader = cut_shader
 	m.set_shader_parameter("fog_tex", fog_texture)
 	m.set_shader_parameter("fog_on", material.get_shader_parameter("fog_on") if material.get_shader_parameter("fog_on") != null else 1.0)
 	return m
 
 static func init_materials(fog_tex: Texture2D) -> void:
-	var sh := Shader.new(); sh.code = LIT_SHADER
+	var sh := Shader.new(); sh.code = LIT_SHADER.replace("%LOOK%", LOOK)
 	fog_texture = fog_tex
 	material = ShaderMaterial.new(); material.shader = sh
 	material.set_shader_parameter("fog_tex", fog_tex)
