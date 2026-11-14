@@ -125,3 +125,7 @@ in your PR, keep it short, and mention the change in the PR description.
 - Touch controls (Guillaume, 2026-11-14): two fingers pan (pinch zooms past a 12% dead zone), one finger taps to
   select/order and drags a selection box. `main.gd PAN_FINGERS = 1` restores one-finger panning. The side panel
   hides with the `»` button in the top bar (`UI.set_panel`, `user://prefs.json`); use `U.panel_px()` for its width.
+- Phone HUD extras (2026-11-14): production chips in the top bar while the panel is hidden (`UI.ProdChip`,
+  `main._prod_chips`), MAP = enlarged minimap (`UI.big_map`, draws the panel minimap's texture), army groups
+  (`main.groups`, `group_btn`), objective auto-hide (`obj_t`, `OBJ_SHOW`), drag-to-build from `BuildItem`
+  (`drag_build_*`, `GHOST_LIFT`), hold a unit item = queue five, corner ✕ cancels. `AF_INPUT=1` replays all of them.
