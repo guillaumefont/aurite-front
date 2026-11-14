@@ -499,7 +499,7 @@ func hud_tick(dt: float) -> void:
 			obj_t -= dt
 			if obj_t <= 0: _obj_vis()
 	panel_t -= dt
-	if panel_t <= 0: panel_t = .12; refresh_panel()
+	if panel_t <= 0: panel_t = .12; refresh_panel(); _upg_btn()
 	mini_t -= dt
 	if mini_t <= 0: mini_t = .15; render_mini()
 
@@ -602,6 +602,17 @@ func cmd_btn(k: String) -> void:
 					u.path = []; u.order = "none"; u.target = null; u.guard = Vector2(u.x, u.y); u.face = null
 					if u.d.harv: u.hs = "idle"
 		"desel": S.set_sel([])
+		"upgrade":
+			var b: Ent = S.sel[0] if S.sel.size() else null
+			if b == null or b.kind != "b" or b.team != 0: return
+			if b.upg >= 0:
+				S.cancel_upgrade(b); toast("Upgrade cancelled, aurite refunded"); sfx("click")
+			else:
+				var why := S.upg_block(b)
+				if why != "": toast(why, "warn"); return
+				S.start_upgrade(b); sfx("place")
+				toast("Upgrading to " + D.UPG[b.type].name + ": " + D.UPG[b.type].say)
+			update_cmd()
 		"repair":
 			var b: Ent = S.sel[0] if S.sel.size() else null
 			if b == null or b.kind != "b": return
@@ -629,6 +640,7 @@ func update_cmd() -> void:
 	var sb: Ent = S.sel[0] if (S.sel.size() == 1 and S.sel[0].kind == "b" and S.sel[0].team == 0) else null
 	U.btn.repair.visible = sb != null; U.btn.sell.visible = sb != null and sb.type != "hq"
 	if sb: U.set_on(U.btn.repair, sb.repairing)
+	_upg_btn()
 	U.set_on(U.btn.amove, amove)
 	U.set_on(U.btn.form, S.formation); U.btn.form.text = "FORMATION " + ("ON" if S.formation else "OFF")
 	for k in ["all", "inf", "veh", "air", "idle"]:
@@ -640,10 +652,23 @@ func update_cmd() -> void:
 		U.selinfo.visible = true
 		if S.sel.size() == 1:
 			var e: Ent = S.sel[0]; var d := e.d
-			if e.kind == "b": U.selinfo.text = d.name.replace(" ×4", "") + (" · tap map to set rally" if (e.type == "barracks" or e.type == "factory") else (" · park vehicles beside it" if e.type == "repair" else ""))
+			if e.kind == "b" and e.team == 0 and not S.upg_def(e).is_empty(): U.selinfo.text = d.name + " · upgrade: " + D.UPG[e.type].say
+			elif e.kind == "b": U.selinfo.text = d.name.replace(" ×4", "") + (" · tap map to set rally" if (e.type == "barracks" or e.type == "factory") else (" · park vehicles beside it" if e.type == "repair" else ""))
 			else: U.selinfo.text = d.name + (" · tap aurite to mine" if d.harv else (" · tap a building to capture or fix" if d.eng else (" · heals nearby infantry" if d.heal else (" · long range, blind up close" if d.minr > 0 else ""))))
 		else: U.selinfo.text = "%d units" % S.sel.size()
 	else: U.selinfo.visible = false
+
+## The UPGRADE button of a selected building: its cost, its progress while it runs (tap again to cancel), dimmed while
+## the requirement is missing (a tap says what is needed).
+func _upg_btn() -> void:
+	var b: Ent = S.sel[0] if (S.sel.size() == 1 and S.sel[0].kind == "b" and S.sel[0].team == 0) else null
+	var u: Dictionary = S.upg_def(b) if b != null else {}
+	U.btn.upgrade.visible = not u.is_empty()
+	if u.is_empty(): return
+	if b.upg >= 0: U.btn.upgrade.text = "UPGRADING %d%% ✕" % int(b.upg * 100)
+	else: U.btn.upgrade.text = "UPGRADE · %d" % u.cost
+	U.set_on(U.btn.upgrade, b.upg >= 0)
+	U.btn.upgrade.modulate.a = 0.55 if (b.upg < 0 and S.upg_block(b) != "") else 1.0
 
 func ring(x: float, y: float, c: Color) -> void:
 	S.parts.append({"k": "ring", "x": x, "y": y, "life": .5, "max": .5, "c": c})
@@ -944,7 +969,7 @@ func draw_hud(c: Control) -> void:
 	if S.teams.is_empty() or U.overlays.start.visible: return
 	var f: Font = U.f_disp
 	for e in S.ents:
-		if not e.alive or not (e.sel or e.hit_t > 0 or (e.kind == "b" and e.repairing)): continue
+		if not e.alive or not (e.sel or e.hit_t > 0 or (e.kind == "b" and (e.repairing or (e.upg >= 0 and e.team == 0)))): continue
 		if e.team != 0 and not S.visible_to_player(e): continue
 		var is_b: bool = e.kind == "b"
 		var top: float = D.BH[e.type] + .25 if is_b else D.UH[e.type] + .15 + (D.ALT if e.d.air else 0.0)
@@ -957,6 +982,8 @@ func draw_hud(c: Control) -> void:
 		c.draw_rect(Rect2(x, y, w * fr, 3), Color("7fd68e") if fr > .6 else (Color("f0c23f") if fr > .3 else Color("ff5a52")))
 		if e.kind == "u" and e.d.harv and e.sel:
 			c.draw_rect(Rect2(x - 1, y + 4, w + 2, 4), Color(0, 0, 0, .75)); c.draw_rect(Rect2(x, y + 5, w * e.load / D.HARV_CAP, 2), Color("f0b93f"))
+		if is_b and e.upg >= 0 and (e.team == 0 or e.sel):
+			c.draw_rect(Rect2(x - 1, y + 4, w + 2, 4), Color(0, 0, 0, .75)); c.draw_rect(Rect2(x, y + 5, w * e.upg, 2), Color("f0b93f"))
 		if is_b and e.repairing:
 			c.draw_string(U.f_disp7, Vector2(p.x - 5, y - 5 + sin(S.time * 6) * 2), "+", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("7fd68e"))
 	_draw_mission_marks(c)
@@ -1156,6 +1183,8 @@ func _autotest(dir: String) -> void:
 		await _bld_test(dir); get_tree().quit(); return
 	elif mode == "choir":
 		await _choir_shots(dir); get_tree().quit(); return
+	elif mode == "up":
+		await _upgrade_shots(dir); get_tree().quit(); return
 	else:
 		play({"fac": OS.get_environment("AF_FAC") if OS.get_environment("AF_FAC") != "" else "vanguard", "enemy": OS.get_environment("AF_ENEMY"), "diff": "normal"})
 	await get_tree().create_timer(1.0).timeout
@@ -1317,6 +1346,59 @@ func _bld_test(dir: String) -> void:
 	await get_tree().create_timer(.7).timeout
 	await _shot(dir + "/unload.png")
 	print("BLDTEST done hs=", hv.hs, " parts=", S.parts.size())
+
+## AF_MODE=up: for each faction, every upgradable building next to its upgraded twin, then the scaffold while an
+## upgrade runs, the reveal and the selected building's UPGRADE button.
+func _upgrade_shots(dir: String) -> void:
+	for fac in D.FAC_ORDER:
+		play({"fac": fac, "enemy": "ashen" if fac != "ashen" else "vanguard", "diff": "normal", "seed": 4242})
+		paused = true
+		var hq: Ent = S.find_hq(0)
+		var pairs: Array = []
+		for t in D.UPG:
+			if not S.avail(0, t): continue
+			var two: Array = []
+			var d: Dictionary = D.BLD[t]; var spot = null
+			# side by side on open ground near the yard
+			for r in range(4, 22):
+				for a in 24:
+					var x := hq.tx + int(round(cos(TAU * a / 24.0) * r)); var y := hq.ty + int(round(sin(TAU * a / 24.0) * r))
+					var ok := true
+					for yy in range(y - 1, y + d.h + 1):
+						for xx in range(x - 1, x + d.w * 2 + 2):
+							if not S.inb(xx, yy) or S.terr[yy * D.MW + xx] >= D.ROCK or S.ore[yy * D.MW + xx] > 0 or S.bmap[yy * D.MW + xx]: ok = false
+					if ok: spot = Vector2i(x, y); break
+				if spot != null: break
+			if spot == null: continue
+			for k in 2:
+				var b := S.add_building(0, t, spot.x + k * (d.w + 1), spot.y); b.born = -9.0; two.append(b)
+			S.update_vision()
+			if two.size() == 2:
+				S.finish_upgrade(two[1]); two[1].up_t = -99.0; pairs.append(two)
+		S.update_vision(); V.fog_clear(true)
+		await get_tree().create_timer(.5).timeout
+		for two in pairs:
+			V.cam_z = 2.4 - 0.3 * two[0].w; V.center_on((two[0].x + two[1].x) / 2, (two[0].y + two[1].y) / 2)
+			await get_tree().create_timer(.25).timeout
+			await _shot(dir + "/%s_%s.png" % [fac, two[0].type])
+		if fac != "vanguard": continue
+		# a reactor mid-upgrade, selected, with the button showing progress; then the reveal
+		var p: Ent = pairs[0][0]
+		S.teams[0].credits = 5000.0; S.add_building(0, "refinery", hq.tx - 6, hq.ty + 4)
+		S.set_sel([p]); S.start_upgrade(p); p.upg = .42
+		V.cam_z = 1.6; V.center_on(p.x, p.y)
+		await get_tree().create_timer(.4).timeout
+		await _shot(dir + "/upgrading.png")
+		S.set_sel([]); S.finish_upgrade(p)
+		for k in 3:
+			S.time += .35
+			await get_tree().create_timer(.2).timeout
+			await _shot(dir + "/reveal_%d.png" % k)
+		S.time += 2.0
+		var fr: Ent = pairs.filter(func(two): return two[0].type == "factory")[0][0]
+		S.set_sel([fr]); update_cmd()
+		await get_tree().create_timer(.3).timeout
+		await _shot(dir + "/button.png")
 
 ## AF_MODE=choir: the Hollow Choir's skirmish pick, buildings, units, a burrowing sapper, shard fields, the Cantor's aura and the Chorus Well.
 func _choir_shots(dir: String) -> void:

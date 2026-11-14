@@ -506,9 +506,9 @@ func center_on(x: float, y: float) -> void:
 # ---------------- entities ----------------
 func _mk_rec(e: Ent) -> Dictionary:
 	var fac: String = S.teams[e.team].fac
-	var n := Models.get_model(e.kind, e.type, e.team, fac)
+	var n := Models.get_model(e.kind, e.type, e.team, fac, e.lv)
 	ents_root.add_child(n)
-	var r := {"n": n, "team": e.team, "f": 0}
+	var r := {"n": n, "team": e.team, "f": 0, "lv": e.lv}
 	for k in ["body", "tur", "flash", "legL", "legR", "orb", "cargo", "scoop", "tube", "spin", "blink", "arm", "tool", "lamp", "lamp2", "rot", "tr", "sel",
 			"flag", "sock", "holo", "trolley", "door", "dl0", "dl1", "rune", "grow", "glow", "halo", "wingL", "wingR"]:
 		var c := n.find_child(k, true, false)
@@ -541,7 +541,7 @@ func sync_ents(t: float) -> void:
 	for e in S.ents:
 		if not e.alive: continue
 		var r = recs.get(e.id)
-		if r != null and r.team != e.team:
+		if r != null and (r.team != e.team or r.lv != e.lv):
 			r.n.queue_free(); r = null
 		if r == null:
 			r = _mk_rec(e); recs[e.id] = r
@@ -590,6 +590,7 @@ func sync_ents(t: float) -> void:
 		else:
 			r.e = e
 			_anim_build(e, r, t)
+			_anim_upgrade(e, r, t)
 			_bld_idle(e, r, t)
 			if r.has("tur"): r.tur.rotation.y = -e.tang
 			if r.has("flash"): r.flash.visible = e.flash > 0
@@ -681,6 +682,31 @@ func _anim_build(e: Ent, r: Dictionary, t: float) -> void:
 	if age >= 0 and not r.get("dusted", false):
 		r.dusted = true; _dust(e, 12)
 	if age > 0 and frame_no % 2 == 0: _life_sparks(e, r, r.top * rise)
+
+const UPG_REVEAL := 1.4
+
+## Upgrades: scaffold and welding sparks round the building while it is upgraded, then the new model rises out of the
+## old one (the cut seam sweeps up from half height).
+func _anim_upgrade(e: Ent, r: Dictionary, t: float) -> void:
+	var anim: String = r.get("anim", "")
+	if anim == "build": return
+	var age: float = t - e.up_t
+	if e.lv > 1 and age < UPG_REVEAL:
+		if not r.has("top"): _prep_life(e, r)
+		if anim != "upg":
+			_cut_on(r); r.anim = "upg"; _dust(e, 10, Color8(240, 200, 120))
+		var p: float = clamp(age / UPG_REVEAL, 0.0, 1.0); var gy: float = r.n.position.y
+		var k: float = 1.0 - pow(1.0 - p, 2.0)
+		r.cutm.set_shader_parameter("cut_y", gy + (r.top + .08) * (.45 + .55 * k))
+		r.scaf.visible = true; r.scaf.scale = Vector3(1, max(.001, clamp((UPG_REVEAL - age) / .4, 0.0, 1.0)), 1)
+		if frame_no % 2 == 0: _life_sparks(e, r, r.top * (.45 + .55 * k))
+		return
+	if anim == "upg": _cut_off(r)
+	if e.upg >= 0:
+		if not r.has("top"): _prep_life(e, r)
+		r.scaf.visible = true; r.scaf.scale = Vector3.ONE
+		if frame_no % 4 == 0 and on_screen(e.x, e.y, 80): _life_sparks(e, r, r.top * (.3 + .6 * fmod(t * .7 + e.id * .13, 1.0)))
+	elif r.has("scaf") and anim == "": r.scaf.visible = false
 
 func _anim_end(r: Dictionary, t: float) -> bool:
 	var e: Ent = r.e

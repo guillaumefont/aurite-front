@@ -40,6 +40,23 @@ var BLD := {
 	"chorus": {"name": "Chorus Well", "fac": "choir", "w": 3, "h": 3, "hp": 1500, "cost": 3000, "time": 25, "pwr": -100, "sight": 5, "req": ["tech"], "sw": true, "charge": 240.0},
 }
 
+## In-place upgrades: select one of your buildings and press UPGRADE. It keeps working while the upgrade is paid and built,
+## then swaps to its upgraded def (BLD2): the keys here replace the base ones. "cost" and "time" are the upgrade's own.
+## yield: aurite multiplier (refinery deliveries, garden harvests). speed: training speed of that producer's queue.
+var UPG := {
+	"power": {"name": "Super Reactor", "cost": 450, "time": 12, "req": ["refinery"], "hp": 1000, "pwr": 250, "say": "+150 power"},
+	"refinery": {"name": "Deep Refinery", "cost": 1000, "time": 15, "req": ["comms"], "hp": 1400, "yield": 1.25, "say": "+25% aurite per load"},
+	"garden": {"name": "Bloom Garden", "cost": 900, "time": 14, "req": ["comms"], "hp": 1150, "yield": 1.4, "say": "+40% aurite"},
+	"barracks": {"name": "Drill Hall", "cost": 600, "time": 10, "req": ["factory"], "hp": 950, "speed": 1.35, "say": "infantry trains 35% faster"},
+	"factory": {"name": "Heavy Works", "cost": 1200, "time": 16, "req": ["comms"], "hp": 1500, "speed": 1.3, "pwr": -40, "say": "vehicles build 30% faster"},
+	"turret": {"name": "Heavy Sentry", "cost": 400, "time": 8, "req": ["factory"], "hp": 750, "dmg": 44, "range": 6.5, "say": "harder hitting, longer reach"},
+	"flak": {"name": "Flak Battery", "cost": 450, "time": 8, "req": ["factory"], "hp": 650, "dmg": 34, "range": 8.5, "say": "harder hitting, longer reach"},
+}
+## Upgraded building defs, built from BLD + UPG in _init. Their "cost" is base + upgrade (selling refunds half of both).
+var BLD2 := {}
+## AI upgrade order: the first one it can afford and that is worth it goes next.
+const AI_UPG := ["power", "refinery", "garden", "factory", "barracks", "turret", "flak"]
+
 var UN := {
 	"rifle": {"name": "Rifleman", "no": ["choir"], "cat": "inf", "cost": 100, "time": 4, "hp": 60, "spd": 1.15, "range": 3.8, "sight": 5, "dmg": 9, "rof": 0.75, "weapon": "bullet", "armor": "inf", "r": 6, "req": ["barracks"]},
 	"lancer": {"name": "Lancer", "cat": "inf", "cost": 250, "time": 6, "hp": 55, "spd": 1.0, "range": 5, "sight": 6, "dmg": 34, "rof": 2.2, "weapon": "rocket", "armor": "inf", "r": 6, "req": ["barracks"]},
@@ -183,6 +200,19 @@ func _init() -> void:
 		d.type = k
 		for kv in [["fac", ""], ["weapon", ""], ["dmg", 0], ["range", 0.0], ["rof", 1.0], ["antiAir", false], ["needPower", false], ["sw", false], ["charge", 0.0], ["kit", 0], ["splash", 0.0], ["minr", 0.0], ["air", false], ["heal", 0], ["eng", false], ["harv", false], ["turret", false], ["armor", "bld"], ["no", []], ["grow", false], ["tun", false], ["lim", 0]]:
 			if not d.has(kv[0]): d[kv[0]] = kv[1]
+	for k in UPG:
+		var u: Dictionary = UPG[k]; var b: Dictionary = BLD[k].duplicate(true)
+		for kk in u:
+			if not ["cost", "time", "req", "say"].has(kk): b[kk] = u[kk]
+		b.cost = BLD[k].cost + u.cost; b.lv = 2; b.base = BLD[k].name
+		if not b.has("speed"): b.speed = 1.0
+		if not b.has("yield"): b["yield"] = 1.0
+		BLD2[k] = b
+		for kv in [["speed", 1.0], ["yield", 1.0]]:
+			if not u.has(kv[0]): u[kv[0]] = kv[1]
+	for k in BLD:
+		for kv in [["lv", 1], ["speed", 1.0], ["yield", 1.0]]:
+			if not BLD[k].has(kv[0]): BLD[k][kv[0]] = kv[1]
 	for k in UN:
 		var d: Dictionary = UN[k]
 		d.type = k

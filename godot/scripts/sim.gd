@@ -828,7 +828,7 @@ func upd_garden(b: Ent, tm: Dictionary, dt: float) -> void:
 	b.gt += dt
 	if b.gt < 4.0: return
 	b.gt -= 4.0
-	var want := 80; var got := 0; var shown := 0
+	var want := int(80 * b.d.yield); var got := 0; var shown := 0
 	var cx: float = b.tx + b.w / 2.0; var cy: float = b.ty + b.h / 2.0
 	for ty in range(int(cy) - 6, int(cy) + 6):
 		for tx in range(int(cx) - 6, int(cx) + 6):
@@ -839,7 +839,7 @@ func upd_garden(b: Ent, tm: Dictionary, dt: float) -> void:
 			if shown < 4 and (b.team == 0 or visible_to_player(b)):
 				shown += 1
 				parts.append({"k": "gem", "x": tx * T + 16.0, "y": ty * T + 16.0, "bx": b.x, "by": b.y, "ah": h_at(tx * T + 16.0, ty * T + 16.0) + .05, "bh": h_at(b.x, b.y) + 1.0, "life": .9, "max": .9, "s": .07 + randf() * .04})
-	var amt: float = (40.0 + got) * (0.5 if low_power(b.team) else 1.0)
+	var amt: float = (40.0 * b.d.yield + got) * (0.5 if low_power(b.team) else 1.0)
 	tm.credits += amt * (D.DIFF[diff].inc if tm.ai else 1.0); tm.earned += amt
 	b.unload_t = time
 	if b.team == 0:
@@ -1143,6 +1143,7 @@ func upd_eng(u: Ent, dt: float) -> void:
 		elif dist_to_ent(u.x, u.y, t) < T * 0.85:
 			if t.team != u.team:
 				var was := t.team
+				cancel_upgrade(t)
 				t.team = u.team; t.seen = true; t.target = null; t.rally = null; t.hp = max(t.hp, t.max_hp * 0.5); calc_power()
 				if u.team == 0:
 					host.toast(t.d.name + " captured", "gold"); host.sfx("ready"); stats.killed += 1
@@ -1247,7 +1248,8 @@ func upd_harv(u: Ent, dt: float) -> void:
 			u.mt -= dt; u.ref.unload_t = time
 			if u.mt <= 0:
 				u.mt = 0.1
-				var a: float = min(50.0, u.load); u.load -= a; u.dump += a
+				var a: float = min(50.0, u.load); u.load -= a
+				a *= float(u.ref.d.yield); u.dump += a
 				var tm: Dictionary = teams[u.team]
 				tm.credits += a * (D.DIFF[diff].inc if tm.ai else 1.0); tm.earned += a
 				if u.team == 0: stats.mined += int(a)
@@ -1291,6 +1293,7 @@ func upd_bld(b: Ent, dt: float) -> void:
 		if b.smoke_t <= 0:
 			b.smoke_t = 0.22
 			parts.append({"k": "smoke", "x": b.tx * T + randf() * b.w * T, "y": b.ty * T + randf() * b.h * T, "vx": (randf() - 0.5) * 8, "vy": -14.0, "life": 1.5, "max": 1.5, "s": 5.0, "c": Color8(40, 36, 32) if b.hp < b.max_hp * 0.25 else Color8(90, 86, 80)})
+	if b.upg >= 0: upd_upgrade(b, tm, dt)
 	if d.grow: upd_garden(b, tm, dt)
 	if d.sw:
 		b.ch = min(d.charge, b.ch + dt * (0.4 if low_power(b.team) else 1.0))
@@ -1481,7 +1484,7 @@ func upd_prod(tm: Dictionary, dt: float) -> void:
 		if cat != "bld" and count(tm.id, D.PRODUCER[cat]) == 0: continue
 		if cat == "bld" and not has_req(tm.id, d.req):
 			tm.credits += q.paid; q.cur = ""; continue
-		var rate: float = min(dt * mult / d.time, 1.0 - q.prog); var cost: float = d.cost * rate
+		var rate: float = min(dt * mult * (prod_speed(tm.id, cat) if cat != "bld" else 1.0) / d.time, 1.0 - q.prog); var cost: float = d.cost * rate
 		if tm.credits >= cost:
 			tm.credits -= cost; q.paid += cost; q.prog += rate
 			if q.prog >= 1 - 1e-6:
@@ -1556,8 +1559,9 @@ func tile_ok(tx: int, ty: int) -> bool:
 	return terr[i] < D.ROCK and ore[i] == 0 and bmap[i] == 0 and vis[i] != 0
 
 func sell(b: Ent) -> int:
-	var ref := int(floor(b.d.cost * 0.5 * b.hp / b.max_hp))
-	teams[0].credits += ref
+	var ref := int(floor(b.d.cost * 0.5 * b.hp / b.max_hp + max(b.upaid, 0.0)))
+	b.upg = -1.0; b.upaid = 0.0
+	teams[b.team].credits += ref
 	b.alive = false; b.sel = false; b.end_kind = "sell"; b.end_t = time
 	if ref > 0: parts.append({"k": "txt", "x": b.x, "y": b.y, "txt": "+%d" % ref, "c": Color("f0b93f"), "life": 1.8, "max": 1.8, "h": D.BH[b.type] + .3})
 	for y in range(b.ty, b.ty + b.h):
@@ -1567,6 +1571,64 @@ func sell(b: Ent) -> int:
 	for k in 8: parts.append({"k": "smoke", "x": b.tx * T + randf() * b.w * T, "y": b.ty * T + randf() * b.h * T, "vx": (randf() - 0.5) * 30, "vy": -randf() * 10, "life": 0.7, "max": 0.7, "s": 3.5, "c": Color8(196, 184, 156)})
 	calc_power(); host.on_world_changed()
 	return ref
+
+# ---------------- upgrades ----------------
+## The upgrade a building can take, or {} (none, already upgraded, or not this faction's).
+func upg_def(b: Ent) -> Dictionary:
+	if b == null or b.kind != "b" or b.lv > 1 or not D.UPG.has(b.type): return {}
+	return D.UPG[b.type]
+
+## Why the building cannot start its upgrade now ("" when it can).
+func upg_block(b: Ent) -> String:
+	var u := upg_def(b)
+	if u.is_empty(): return "No upgrade"
+	if b.upg >= 0: return "Upgrading"
+	if not has_req(b.team, u.req): return "Requires " + " + ".join(req_of(b.team, u.req).map(func(r): return D.BLD[r].name))
+	return ""
+
+func start_upgrade(b: Ent) -> bool:
+	if upg_block(b) != "": return false
+	b.upg = 0.0; b.upaid = 0.0
+	if b.team == 1 and visible_to_player(b): host.toast("Enemy " + b.d.name + " is upgrading", "warn")
+	return true
+
+func cancel_upgrade(b: Ent) -> void:
+	if b.upg < 0: return
+	teams[b.team].credits += b.upaid
+	b.upg = -1.0; b.upaid = 0.0
+
+## Pays and builds a running upgrade like a production queue: slower on low power, stalls without aurite.
+func upd_upgrade(b: Ent, tm: Dictionary, dt: float) -> void:
+	var u: Dictionary = D.UPG[b.type]
+	var mult: float = (0.5 if low_power(b.team) else 1.0) * (D.DIFF[diff].prod if tm.ai else 1.0)
+	var rate: float = min(dt * mult / u.time, 1.0 - b.upg); var cost: float = u.cost * rate
+	if tm.credits < cost:
+		if b.team == 0:
+			tm.noFundsT -= dt
+			if tm.noFundsT <= 0: tm.noFundsT = 8.0; host.toast("Insufficient aurite", "warn")
+		return
+	tm.credits -= cost; b.upaid += cost; b.upg += rate
+	if b.upg >= 1 - 1e-6: finish_upgrade(b)
+
+func finish_upgrade(b: Ent) -> void:
+	var nd: Dictionary = D.BLD2[b.type]
+	var fr: float = b.hp / b.max_hp
+	b.d = nd; b.lv = 2; b.upg = -1.0; b.upaid = 0.0; b.up_t = time
+	b.max_hp = nd.hp; b.hp = min(nd.hp, max(fr, 0.0) * nd.hp + (nd.hp - D.BLD[b.type].hp))
+	calc_power()
+	if b.team == 0:
+		host.toast(nd.name + " online", "gold"); host.sfx("ready")
+		parts.append({"k": "txt", "x": b.x, "y": b.y, "txt": "UPGRADED", "c": Color("f0b93f"), "life": 2.0, "max": 2.0, "h": D.BH[b.type] + .4})
+	elif visible_to_player(b): host.toast("Enemy " + nd.name + " online", "warn")
+	host.on_world_changed(); host.on_sel_changed()
+
+## Training speed of a category: an upgraded producer (Drill Hall, Heavy Works) speeds up its whole queue.
+func prod_speed(team: int, cat: String) -> float:
+	var p: String = D.PRODUCER.get(cat, "")
+	var best := 1.0
+	for b in ents:
+		if b.alive and b.kind == "b" and b.team == team and b.type == p: best = max(best, float(b.d.speed))
+	return best
 
 func set_sel(list: Array) -> void:
 	for e in sel: e.sel = false
@@ -1580,6 +1642,12 @@ func ai_think(tm: Dictionary) -> void:
 	var hq := find_hq(id)
 	if hq == null: return
 	var ok := func(t: String) -> bool: return t != "" and avail(id, t) and has_req(id, D.def_of(t).req) and not at_limit(id, t)
+	# upgrades: always in skirmish, only on Hard in the campaigns (Normal stays as beatable as before)
+	var ai_ups: bool = (not M) or (M.aiBuild and lvl == "hard")
+	if ai_ups and not _ai_upgrading(id, ""):
+		for t in D.AI_UPG:
+			if t == "power" and tm.pused + 60 <= tm.pmade: continue
+			if _ai_upgrade(tm, t, 800): break
 	if not M or M.aiBuild:
 		if q.ready:
 			var spot = ai_spot(id, q.cur, hq)
@@ -1587,7 +1655,9 @@ func ai_think(tm: Dictionary) -> void:
 				add_building(id, q.cur, spot.x, spot.y); q.cur = ""; q.ready = false; q.prog = 0.0; q.paid = 0.0
 		elif q.cur == "":
 			var nxt := ""
-			if tm.pused + 20 > tm.pmade and count(id, "power") < 10 and avail(id, "power"): nxt = "power"
+			if tm.pused + 20 > tm.pmade and count(id, "power") < 10 and avail(id, "power"):
+				# an upgrade running on a reactor (or one it can start now) beats a new reactor
+				if not (ai_ups and (_ai_upgrading(id, "power") or _ai_upgrade(tm, "power", 200))): nxt = "power"
 			else:
 				var need := {}
 				for t0 in D.AI_ORDER:
@@ -1652,6 +1722,20 @@ func ai_think(tm: Dictionary) -> void:
 			if dd < bd: bd = dd; tgt = e
 		if tgt != null:
 			group_move(idle, tgt.x, tgt.y, "amove"); tm.wave = mini(tm.wave + 2, 16)
+
+func _ai_upgrading(id: int, type: String) -> bool:
+	for b in ents:
+		if b.alive and b.team == id and b.kind == "b" and b.upg >= 0 and (type == "" or b.type == type): return true
+	return false
+
+## Starts the upgrade of one of the team's buildings of this type when it keeps `spare` aurite in hand.
+func _ai_upgrade(tm: Dictionary, type: String, spare: float) -> bool:
+	var u: Dictionary = D.UPG[type]
+	if tm.credits < u.cost + spare: return false
+	for b in ents:
+		if b.alive and b.team == tm.id and b.kind == "b" and b.type == type and upg_block(b) == "":
+			return start_upgrade(b)
+	return false
 
 func ai_spot(id: int, type: String, hq: Ent, home := false):
 	var d: Dictionary = D.BLD[type]; var best = null; var bs := 1e9

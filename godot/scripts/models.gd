@@ -293,10 +293,10 @@ class Builder:
 		return root
 
 # ---------------- models ----------------
-static func get_model(kind: String, type: String, team: int, fac: String) -> Node3D:
-	var key := kind + type + str(team) + fac
+static func get_model(kind: String, type: String, team: int, fac: String, lv := 1) -> Node3D:
+	var key := kind + type + str(team) + fac + ("+%d" % lv if lv > 1 else "")
 	if not cache.has(key):
-		cache[key] = unit_model(type, team, fac) if kind == "u" else bld_model(type, team, fac)
+		cache[key] = unit_model(type, team, fac) if kind == "u" else bld_model(type, team, fac, lv)
 	return cache[key].duplicate()
 
 static func infantry(B: Builder, b: Node3D, type: String) -> void:
@@ -529,7 +529,7 @@ static func _ring(B: Builder, par: Node3D, r0: float, r1: float, c: Color) -> vo
 			b[0].append(a); b[0].append(cc); b[0].append(bb)
 			for k in 3: b[1].append(Vector3.UP); b[2].append(c)
 
-static func bld_model(type: String, team: int, fac: String) -> Node3D:
+static func bld_model(type: String, team: int, fac: String, lv := 1) -> Node3D:
 	var B := Builder.new(team, fac); var M := MAT; var tm := B.tm; var P := B.P
 	var g := B.root
 	var body := B.grp(g, "body")
@@ -684,6 +684,7 @@ static func bld_model(type: String, team: int, fac: String) -> Node3D:
 			k += 1
 		B.box(M.moss, w * .35, .02, h * .25, -w * .2, .125, h * .25, body)
 	_detail(B, type, body, g)
+	if lv > 1: _upgraded(B, type, body, g)
 	# selection outline
 	var sel := B.grp(g, "sel", Vector3(0, .16, 0)); sel.visible = false; B.nshadow[sel] = true
 	var gc := Color(0.5, 0.84, 0.56, 0); var hw := w / 2 + .06; var hh := h / 2 + .06
@@ -792,6 +793,84 @@ static func _detail(B: Builder, type: String, body: Node3D, root: Node3D) -> voi
 				B.pipe(M.dark, Vector3(cos(a) * .3, .12, sin(a) * .3), Vector3(cos(a) * .08, .5, sin(a) * .08), .015, body)
 	if steam.size(): root.set_meta("steam", steam)
 	if stacks.size(): root.set_meta("stacks", stacks)
+
+## What an upgrade adds on top of the base model: taller stacks, extra tanks, armour, more barrels, a gold trim band
+## round the slab so an upgraded building reads at a glance. Spinning parts go in a group named "spin".
+static func _upgraded(B: Builder, type: String, body: Node3D, root: Node3D) -> void:
+	var M := MAT; var tm := B.tm; var P := B.P
+	var d: Dictionary = D.BLD[type]; var w: float = d.w; var h: float = d.h
+	if w > 1:
+		for z in [-h / 2 + .06, h / 2 - .06]: B.box(M.gold, w - .14, .035, .05, 0, .13, z, body)
+		for x in [-w / 2 + .06, w / 2 - .06]: B.box(M.gold, .05, .035, h - .14, x, .13, 0, body)
+	match type:
+		"power":
+			# Super Reactor: both cooling towers raised, a caged fusion core between them, spinning containment ring
+			var steam := PackedVector3Array()
+			for t in [[-.4, -.35, .3, 1.12], [.42, .4, .26, .92]]:
+				B.cyl(P.metal2, t[2] * .9, t[2], .42, 7, t[0], t[3] + .21, t[1], body)
+				B.cyl(tm.col, t[2] * .92, t[2] * .92, .06, 7, t[0], t[3] + .1, t[1], body)
+				B.cyl(M.cyan, t[2] * .9, t[2] * .9, .05, 7, t[0], t[3] + .44, t[1], body)
+				steam.append(Vector3(t[0], t[3] + .6, t[1]))
+			root.set_meta("steam", steam)
+			B.cyl(P.metal, .2, .24, .32, 8, .02, .28, .02, body)
+			B.ico(M.cyan, .19, .02, .62, .02, body)
+			for k in 4:
+				var a := TAU * k / 4.0 + PI / 4
+				B.box(M.dark, .03, .5, .03, .02 + cos(a) * .22, .6, .02 + sin(a) * .22, body)
+			var sp := B.grp(body, "spin", Vector3(.02, .62, .02))
+			var rg := B.grp(sp, "ring", Vector3.ZERO, Vector3(PI / 2, 0, 0)); B.torus(M.cyan, .3, .025, 4, 12, rg); B.nshadow[sp] = true
+			B.lamp(body, -.4, 1.62, -.35, M.redLight); B.lamp(body, .42, 1.42, .4, M.redLight)
+		"refinery":
+			# Deep Refinery: a drill derrick on the roof and two extra holding tanks out front
+			for k in 4:
+				var a := TAU * k / 4.0 + PI / 4
+				B.pipe(P.metal2, Vector3(-.6 + cos(a) * .35, .9, -.6 + sin(a) * .35), Vector3(-.6, 1.75, -.6), .025, body)
+			B.box(tm.col, .14, .1, .14, -.6, 1.75, -.6, body); B.cyl(M.dark, .03, .03, .9, 4, -.6, 1.3, -.6, body)
+			for x in [-1.05, 1.05]:
+				B.cyl(P.metal2, .26, .28, .45, 8, x, .35, .78, body); B.ico(M.goldGlow, .24, x, .58, .78, body, Vector3(1, .45, 1))
+				B.cyl(tm.col, .285, .285, .04, 8, x, .3, .78, body)
+				B.pipe(M.pipe, Vector3(x, .25, .5), Vector3(x * .55, .25, .2), .03, body)
+			B.lamp(body, -.6, 1.85, -.6, M.redLight)
+		"garden":
+			# Bloom Garden: four tall crystal spires at the corners and a ring of floating shards over the bed
+			for c in [[-1, -1], [1, -1], [-1, 1], [1, 1]]:
+				B.cluster(body, c[0] * .78, .1, c[1] * .78, 4, .75, c[0] * 2 + c[1] + 5)
+			var sp := B.grp(body, "spin", Vector3(0, 1.3, 0)); B.nshadow[sp] = true
+			for k in 6:
+				var a := TAU * k / 6.0
+				B.gem(M.cryst if k % 2 else M.crystD, .05, .12, .05, cos(a) * .45, 0, sin(a) * .45, sp)
+		"barracks":
+			# Drill Hall: an armoured upper floor with a searchlight and a lookout mast
+			B.box(P.metal2, .9, .28, .7, -.2, .98, -.2, body); B.box(tm.col, .92, .05, .72, -.2, .96, -.2, body)
+			B.windows(body, -.55, .15, 1.0, .155, 3, .14, .08)
+			B.cyl(M.dark, .02, .025, .8, 4, .35, 1.4, -.45, body); B.box(P.metal, .26, .03, .26, .35, 1.8, -.45, body)
+			B.lamp(body, .35, 1.86, -.45, M.goldGlow)
+			B.bags(body, 0, -.1, .95, PI + .3, TAU - .3, 6)
+		"factory":
+			# Heavy Works: a second assembly deck, a gantry crane over the roof and two more stacks
+			B.box(P.metal2, 1.3, .38, .9, .55, 1.32, -.75, body); B.box(tm.col, 1.32, .05, .92, .55, 1.38, -.75, body)
+			B.windows(body, .05, 1.05, 1.32, -.29, 4, .16, .1)
+			for x in [-1.35, 1.35]: B.box(M.scaf, .07, 1.5, .07, x, .87, -1.35, body)
+			B.box(M.scaf, 2.75, .08, .1, 0, 1.62, -1.35, body)
+			B.box(M.gold, .2, .14, .2, -.4, 1.52, -1.35, body); B.box(M.dark, .015, .35, .015, -.4, 1.3, -1.35, body)
+			var stacks: PackedVector3Array = root.get_meta("stacks", PackedVector3Array())
+			for x in [-1.25, 1.2]:
+				B.cyl(P.metal2, .09, .11, .85, 6, x, 1.4, -.2, body); stacks.append(Vector3(x, 1.85, -.2))
+			root.set_meta("stacks", stacks)
+		"turret":
+			# Heavy Sentry: twin barrels, an armoured mantlet, concrete collar
+			var t := body.find_child("tur", true, false) as Node3D
+			B.cyl(P.conc, .42, .46, .12, 6, 0, .1, 0, body)
+			B.box(tm.dk, .3, .12, .3, -.02, .2, 0, t); B.box(M.gold, .31, .025, .31, -.02, .27, 0, t)
+			for z in [-.07, .07]: B.box(M.dark, .48, .06, .06, .3, .1, z, t)
+		"flak":
+			# Flak Battery: a third barrel pair and a spinning search radar
+			var t := body.find_child("tur", true, false) as Node3D
+			for z in [-.16, .16]: B.box(M.dark, .42, .05, .05, .18, .24, z, t, Vector3(0, 0, .75))
+			B.box(tm.dk, .34, .06, .38, 0, .18, 0, t)
+			B.cyl(M.dark, .015, .015, .3, 4, -.2, .62, -.2, body)
+			var sp := B.grp(body, "spin", Vector3(-.2, .8, -.2)); B.box(P.metal, .3, .12, .03, 0, 0, 0, sp); B.nshadow[sp] = true
+	B.lamp(body, w / 2 - .12, .2, h / 2 - .12, M.goldGlow)
 
 ## Yellow scaffold around a footprint, shown while a building is assembled or dismantled.
 static func scaffold(w: int, h: int, top: float) -> Node3D:

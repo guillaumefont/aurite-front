@@ -44,6 +44,20 @@
 - New sounds (`shard`, `geode`, `burrow`, `ack_choir`) are in `tools/synth.py`. Re-rendering every sound on another
   numpy version changes the old files slightly, so copy only the new ones into `sfx/`.
 
+## Building upgrades (Guillaume 2026-11-14: "allow structure upgrade, for example the reactor to a superreactor")
+
+- `D.UPG[type]` holds each upgrade (cost, time, req, say, plus the stats it replaces); `D.BLD2[type]` is the merged
+  upgraded def. An upgraded building keeps its `type` (so counts, requirements and the AI build order still work) and
+  gets `b.lv = 2`, `b.d = D.BLD2[type]`. Read stats from `b.d`, not `D.BLD[b.type]`, in any new building code.
+- `Sim.start_upgrade` / `cancel_upgrade` / `upd_upgrade` (paid over time like a queue) / `finish_upgrade`; `upg_block`
+  gives the reason a building cannot upgrade. Effects: `d.pwr`, `d.yield` (refinery deliveries, garden harvests),
+  `d.speed` via `Sim.prod_speed` (training speed of the producer's category), weapon stats.
+- Models: `Models.get_model(..., lv)` adds `_upgraded()` parts; the view rebuilds a building's model when `e.lv`
+  changes and plays a reveal (`View3D._anim_upgrade`). `AF_MODE=up AF_SHOT=dir` shoots every base/upgraded pair per
+  faction, a running upgrade, the reveal and the button.
+- AI: upgrades in skirmish, in campaigns only on Hard (`ai_ups` in `ai_think`), to keep Normal beatable.
+  `upgrade_tests()` in `tests/sim_test.gd` checks this and each effect.
+
 ## Self-update (`godot/scripts/updater.gd`, Guillaume 2026-11-14)
 
 - Installed games update themselves: the `Updater` autoload (listed FIRST in `project.godot`) fetches `version.json`

@@ -182,7 +182,7 @@ func _build_hud() -> void:
 	for k in ["all", "inf", "veh", "air", "idle"]:
 		var b := mkbtn(k, func(): main.squad_btn(k), 58.0, 46.0); b.add_theme_stylebox_override("normal", sb(Color(0.08, 0.1, 0.12, 0.92), Color("3b4a54")))
 		cmd_bot.add_child(b); btn[k] = b
-	for pair in [["sw", "Launch"], ["amove", "Attack"], ["stop", "Stop"], ["repair", "Repair"], ["sell", "Sell"], ["desel", "✕"]]:
+	for pair in [["sw", "Launch"], ["amove", "Attack"], ["stop", "Stop"], ["upgrade", "Upgrade"], ["repair", "Repair"], ["sell", "Sell"], ["desel", "✕"]]:
 		var k: String = pair[0]
 		var b := mkbtn(pair[1], func(): main.cmd_btn(k)); cmd_top.add_child(b); btn[k] = b; b.visible = false
 	set_on(btn.sw, true)
