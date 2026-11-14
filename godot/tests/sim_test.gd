@@ -41,5 +41,13 @@ func _ready():
 	print("formation near fspd=", near.map(func(u): return snappedf(u.fspd, 0.01)), " far fspd=", far.fspd, " spd=", far.d.spd)
 	if slow.size() or far.path.is_empty():
 		print("FORMATION TEST FAILED"); get_tree().quit(1); return
+	# formation off: player units go straight to the spot at their own speed, no ranks
+	s.formation = false
+	s.group_move(near, bx + 2 * D.T, by - 6 * D.T, "move")
+	var paced := near.filter(func(u): return u.fspd > 0 or u.path.is_empty())
+	print("formation off fspd=", near.map(func(u): return u.fspd))
+	s.formation = true
+	if paced.size():
+		print("FORMATION OFF TEST FAILED"); get_tree().quit(1); return
 	print("SIM TEST DONE")
 	get_tree().quit()
