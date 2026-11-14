@@ -39,6 +39,11 @@ var pv_from = null
 var pv_to = null
 var squad_key := ""   # squad button that made the current selection (lit until the selection changes)
 var squad_set: Array = []
+var groups := [[], [], [], []]   # army groups: unit ids per chip on the left edge
+var obj_t := 0.0                 # seconds the objective box stays open
+var obj_gi := -1
+const OBJ_SHOW := 8.0
+const GHOST_LIFT := 70.0         # a building dragged from the menu shows this far above the finger
 
 func _ready() -> void:
 	headless = DisplayServer.get_name() == "headless"
@@ -118,6 +123,87 @@ func _load_prefs() -> Dictionary:
 func _save_prefs(p: Dictionary) -> void:
 	var f := FileAccess.open("user://prefs.json", FileAccess.WRITE)
 	if f: f.store_string(JSON.stringify(p))
+
+## While the panel is hidden, the top bar shows each production line that is busy.
+func _prod_chips(tm: Dictionary) -> void:
+	for cat in U.prod_chips:
+		var pc = U.prod_chips[cat]; var q: Dictionary = tm.prod[cat]
+		var busy: bool = q.cur != "" or q.queue.size() > 0
+		pc.visible = not U.panel_open and busy
+		if not pc.visible: continue
+		pc.type = q.cur if q.cur != "" else q.queue[0]
+		pc.prog = q.prog; pc.is_ready = cat == "bld" and q.ready
+		pc.n = q.queue.size() + (1 if q.cur != "" else 0) if cat != "bld" else 1
+		pc.queue_redraw()
+
+func prod_chip_tap(cat: String) -> void:
+	var q: Dictionary = S.teams[0].prod[cat]
+	if cat == "bld" and q.ready: start_placing(q.cur); sfx("click"); return
+	if not U.panel_open: toggle_panel()
+	select_tab(cat)
+
+## Hold a unit button: queue five of it.
+func queue_many(cat: String, type: String, k: int) -> void:
+	var q: Dictionary = S.teams[0].prod[cat]
+	for i in k:
+		var before: int = q.queue.size()
+		click_item(cat, type)
+		if q.queue.size() == before: break
+	buzz(20)
+
+# ---------------- objective ----------------
+func _obj_vis() -> void:
+	var m: bool = S.mission != null and not S.teams.is_empty()
+	U.obj_box.visible = m and obj_t > 0
+	U.obj_btn.visible = m and obj_t <= 0
+
+func show_objective() -> void:
+	obj_t = OBJ_SHOW; _obj_vis(); sfx("click")
+
+func hide_objective() -> void:
+	obj_t = 0; _obj_vis()
+
+# ---------------- army groups ----------------
+func _group_units(i: int) -> Array:
+	return S.ents.filter(func(e): return e.alive and e.kind == "u" and e.team == 0 and not e.captive and groups[i].has(e.id))
+
+## Tap: select the group; tap again (already selected): centre the camera on it.
+## Hold (or tap an empty group with units selected): store the selected units in it.
+func group_btn(i: int, hold: bool) -> void:
+	if S.teams.is_empty(): return
+	var units := _group_units(i)
+	var sel_u: Array = S.sel.filter(func(e): return e.kind == "u")
+	if hold or units.is_empty():
+		if sel_u.size():
+			groups[i] = sel_u.map(func(e): return e.id)
+			toast("Group %d · %d units" % [i + 1, sel_u.size()]); buzz(25); sfx("click")
+		elif hold:
+			groups[i] = []; toast("Group %d cleared" % (i + 1))
+		else: toast("Select units, then hold %d to store them" % (i + 1))
+		_group_chips(); return
+	var ids := units.map(func(e): return e.id); ids.sort()
+	var cur := sel_u.map(func(e): return e.id); cur.sort()
+	if ids == cur:
+		var c := Vector2()
+		for e in units: c += Vector2(e.x, e.y)
+		c /= units.size(); V.center_on(c.x, c.y)
+	else:
+		S.set_sel(units); sfx("click"); buzz(10)
+
+func _group_chips() -> void:
+	for i in 4:
+		var n := _group_units(i).size(); var b: Button = U.btn["grp%d" % i]
+		b.text = str(i + 1) + (" · %d" % n if n else "")
+		b.modulate.a = 1.0 if n else 0.55
+
+## A short vibration on phones to confirm an order or a selection.
+func buzz(ms: int) -> void:
+	if OS.has_feature("mobile"): Input.vibrate_handheld(ms)
+
+# ---------------- enlarged minimap ----------------
+func toggle_big_map() -> void:
+	U.big_map.visible = not U.big_map.visible
+	U.set_on(U.btn.map, U.big_map.visible); sfx("click")
 
 ## While the panel is hidden its button lights up when a building is ready to place.
 func _panel_alert() -> void:
@@ -275,6 +361,7 @@ func play(opt: Dictionary) -> void:
 
 func new_game(d: String, opt: Dictionary) -> void:
 	placing = null; amove = false; box_mode = false; sw_aim = false; gest = null; ptrs.clear()
+	groups = [[], [], [], []]; obj_t = OBJ_SHOW; obj_gi = -1
 	S.new_game(d, opt)
 	diff = S.diff
 	V.build_world()
@@ -283,7 +370,7 @@ func new_game(d: String, opt: Dictionary) -> void:
 	V.center_on(S.p0.x * T + 16, (S.p0.y - 1) * T)
 	if icons_for != S.teams[0].fac and not headless: render_icons(S.teams[0].fac)
 	select_tab("bld"); refresh_panel(true); update_cmd(); end_placing()
-	U.obj_box.visible = S.mission != null
+	_obj_vis()
 	if S.mission: toast(S.mission.title, "gold")
 	else:
 		toast("Two fingers move the map · drag one finger to box-select" if PAN_FINGERS == 2 else "Tap the round button to box-select units", "gold")
@@ -391,7 +478,10 @@ func refresh_panel(_force := false) -> void:
 		U.sw_name.text = sw.d.name.split(" ")[0].to_upper()
 		U.sw_time.text = "READY" if sw.rdy else D.fmt(sw.d.charge - sw.ch)
 	if S.mission: U.obj_l.text = S.obj_text()
+	_obj_vis()
 	_panel_alert()
+	_prod_chips(tm)
+	_group_chips()
 
 func hud_tick(dt: float) -> void:
 	var tm: Dictionary = S.teams[0]
@@ -403,6 +493,11 @@ func hud_tick(dt: float) -> void:
 	U.power_bar.size.x = 84.0 * min(1.0, float(tm.pused) / tm.pmade if tm.pmade else 1.0)
 	U.power_bar.color = UI.C_BAD if lp else UI.C_OK
 	U.power_l.add_theme_color_override("font_color", UI.C_BAD if lp else UI.C_FG)
+	if S.mission:
+		if S.gi != obj_gi: obj_gi = S.gi; obj_t = OBJ_SHOW  # a new goal shows itself again
+		if obj_t > 0:
+			obj_t -= dt
+			if obj_t <= 0: _obj_vis()
 	panel_t -= dt
 	if panel_t <= 0: panel_t = .12; refresh_panel()
 	mini_t -= dt
@@ -422,6 +517,27 @@ func start_placing(type: String) -> void:
 				if dd < bd: bd = dd; best = Vector2i(x, y)
 	if best != null: placing.tx = best.x; placing.ty = best.y
 	U.place_bar.visible = true; U.cmd_row.visible = false; place_hint()
+
+## Drag a ready building out of the menu: it follows the finger, drawn GHOST_LIFT above it so the
+## finger does not hide it, and is built where it is let go (if the spot is allowed).
+func drag_build_start(type: String, p: Vector2) -> void:
+	if placing == null or placing.type != type: start_placing(type)
+	drag_build_move(p)
+
+func _ghost_at(p: Vector2, lift: float) -> void:
+	var w := V.s2w(p.x, p.y - lift); var d: Dictionary = D.BLD[placing.type]
+	placing.tx = int(round(w.x / T - d.w / 2.0)); placing.ty = int(round(w.y / T - d.h / 2.0))
+
+func drag_build_move(p: Vector2) -> void:
+	if placing == null or not _in_view(p): return
+	_ghost_at(p, GHOST_LIFT)
+
+func drag_build_end(p: Vector2) -> void:
+	if placing == null: return
+	if not _in_view(p): return  # let go over the menu: stay in placing mode
+	_ghost_at(p, GHOST_LIFT)
+	if S.can_place(0, placing.type, placing.tx, placing.ty, false): confirm_place()
+	else: toast("Can't build there · drag it or tap Build here", "warn")
 
 func place_hint() -> void:
 	var q: Dictionary = S.teams[0].prod.bld
@@ -543,7 +659,8 @@ func pick(sx: float, sy: float, wx: float, wy: float) -> Ent:
 		var p := V.w2s(e.x, e.y, h + D.UH[e.type] * .45)
 		if p.z < 0: continue
 		var q := V.w2s(e.x + T, e.y, h); var o := V.w2s(e.x, e.y, h); var ppt: float = abs(q.x - o.x)
-		var rad: float = max(22.0, e.r / T * ppt * 1.4); var dd := Vector2(p.x - sx, p.y - sy).length()
+		# generous: a fingertip is about 30 UI units wide, small infantry far less
+		var rad: float = max(32.0, e.r / T * ppt * 1.8); var dd := Vector2(p.x - sx, p.y - sy).length()
 		if dd < rad and dd < bd: bd = dd; best = e
 	if best: return best
 	var rr := V.ray(sx, sy); var ro: Vector3 = rr[0]; var rn: Vector3 = rr[1]
@@ -604,6 +721,7 @@ func tap(sx: float, sy: float, right: bool) -> void:
 				if same.size() > 1: toast("%d × %s" % [same.size(), hit.d.name])
 			else:
 				S.set_sel([hit]); last_tap = {"id": hit.id, "t": now}
+			buzz(8)
 		else: S.set_sel([hit])
 		sfx("click"); return
 	if sel_u.size():
@@ -622,7 +740,7 @@ func command(hit: Ent, wx: float, wy: float, units: Array, face = null, width :=
 		if combat.size(): S.attack_order(combat, hit); ring(hit.x, hit.y, Color("ff5a52")); sfx("click")
 		if hit.kind == "b" and engs.size(): S.eng_order(engs, hit); ring(hit.x, hit.y, Color("7fd68e")); sfx("click")
 		if others.size(): S.group_move(others, hit.x, hit.y, "move")
-		amove = false; update_cmd(); return
+		buzz(12); amove = false; update_cmd(); return
 	var ti := clampi(int(wy / T), 0, 63) * 64 + clampi(int(wx / T), 0, 63)
 	if harvs.size() and S.ore[ti] > 0:
 		for h in harvs: h.pref = ti; h.hs = "find"
@@ -631,14 +749,14 @@ func command(hit: Ent, wx: float, wy: float, units: Array, face = null, width :=
 	if combat.size() or others.size():
 		S.group_move(combat + others, wx, wy, "amove" if (amove and combat.size()) else "move", face, width)
 		ring(wx, wy, Color("ff5a52") if amove else Color("7fd68e"))
-	sfx("ack"); amove = false; update_cmd()
+	sfx("ack"); buzz(12); amove = false; update_cmd()
 
 func box_select(x0: float, y0: float, x1: float, y1: float) -> void:
 	var us := _box_units(Vector2(x0, y0), Vector2(x1, y1))
 	var cb := us.filter(func(u): return not u.d.harv)
 	if cb.size(): us = cb
 	S.set_sel(us)
-	if us.size(): sfx("click")
+	if us.size(): sfx("click"); buzz(8)
 
 func _box_units(a: Vector2, b: Vector2) -> Array:
 	V.update_cam()
@@ -724,7 +842,8 @@ func _move(id: int, p: Vector2) -> void:
 	var moved: bool = p.distance_to(gest.s) > (9.0 if gest.mouse else 14.0)
 	if gest.mode == "pending" and moved:
 		if gest.mouse: gest.mode = "box"
-		elif placing != null: gest.mode = "ghost"
+		elif placing != null:
+			gest.mode = "ghost"; gest.g0 = Vector2(placing.tx, placing.ty); gest.w0 = V.s2w(gest.s.x, gest.s.y)
 		elif box_mode or PAN_FINGERS == 2: gest.mode = "box"
 		else: gest.mode = "pan"
 	elif gest.mode == "rpending" and moved:
@@ -740,8 +859,9 @@ func _move(id: int, p: Vector2) -> void:
 			V.cam_x += a.x - b.x; V.cam_y += a.y - b.y; V.clamp_cam()
 		"box": gest.e = p
 		"ghost":
-			var w := V.s2w(p.x, p.y); var d: Dictionary = D.BLD[placing.type]
-			placing.tx = int(round(w.x / T - d.w / 2.0)); placing.ty = int(round(w.y / T - d.h / 2.0))
+			# the building moves with the finger from where it was, so it can be dragged from below without hiding it
+			var dw: Vector2 = (V.s2w(p.x, p.y) - gest.w0) / T
+			placing.tx = int(gest.g0.x + round(dw.x)); placing.ty = int(gest.g0.y + round(dw.y))
 		"face":
 			gest.e = p
 			_face_preview()
@@ -922,6 +1042,7 @@ func render_mini() -> void:
 	img.set_data(64, 64, false, Image.FORMAT_RGBA8, data)
 	m.tex.update(img)
 	m.queue_redraw()
+	if U.big_map.visible: U.big_map.queue_redraw()
 
 func draw_mini_overlay(c: Control) -> void:
 	if S.teams.is_empty(): return
@@ -1355,3 +1476,35 @@ func _input_test() -> void:
 	print("INPUT placing=", placing)
 	confirm_place()
 	print("INPUT reactors=", S.count(0, "power"))
+	# drag a ready reactor out of the menu onto the map (touch on the panel item, emulated mouse)
+	click_item("bld", "power")
+	for i in 20 * 9: S.step(0.05)
+	refresh_panel(true); await get_tree().process_frame
+	var it = U.items["bld:power"]; var ic: Vector2 = it.get_global_rect().get_center()
+	var dst := V.s2w(300, 330 - GHOST_LIFT)
+	_touch(0, ic, true); await get_tree().process_frame
+	for k in 8:
+		_drag(0, ic.lerp(Vector2(300, 330), (k + 1) / 8.0)); await get_tree().process_frame
+	print("INPUT drag-build placing=", placing)
+	_touch(0, Vector2(300, 330), false); await get_tree().process_frame
+	var rs := S.ents.filter(func(e): return e.alive and e.team == 0 and e.type == "power")
+	print("INPUT drag-build reactors=", rs.size(), " last at ", rs.back().x if rs.size() else 0, ",", rs.back().y if rs.size() else 0, " aimed ", dst)
+	end_placing()
+	# hold-to-queue five, groups, hidden panel with production chips and the big map
+	S.teams[0].credits = 9000
+	var inf_t: String = D.sub(S.teams[0].fac, "rifle")
+	if S.count(0, "barracks") == 0: S.add_building(0, D.sub(S.teams[0].fac, "barracks") if D.BLD.has(D.sub(S.teams[0].fac, "barracks")) else "barracks", 12, 44)
+	queue_many("inf", inf_t, 5)
+	print("INPUT queue five: ", S.teams[0].prod.inf.queue.size() + (1 if S.teams[0].prod.inf.cur != "" else 0))
+	var rifles := S.ents.filter(func(e): return e.alive and e.team == 0 and e.type == "rifle")
+	S.set_sel(rifles); group_btn(1, true); S.set_sel([])
+	group_btn(1, false); print("INPUT group 2 select: ", S.sel.size(), " of ", rifles.size())
+	V.center_on(D.WW / 2.0, D.WH / 2.0); group_btn(1, false)
+	print("INPUT group 2 recentre: cam ", Vector2(V.cam_x, V.cam_y), " group at ", Vector2(rifles[0].x, rifles[0].y))
+	click_item("bld", "power"); S.step(0.5)
+	if U.panel_open: toggle_panel()
+	toggle_big_map(); refresh_panel(true); render_mini()
+	await get_tree().create_timer(0.3).timeout
+	print("INPUT chips: ", U.prod_chips.keys().filter(func(c): return U.prod_chips[c].visible))
+	await _shot(OS.get_environment("AF_SHOT") + "/04_chips_map_groups.png")
+	toggle_big_map(); toggle_panel()

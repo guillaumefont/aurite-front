@@ -44,6 +44,10 @@ var place_bar: HBoxContainer
 var place_hint: Label
 var panel: PanelContainer
 var mini: Control
+var big_map: Control      # enlarged minimap floating over the view (MAP button)
+var prod_chips := {}      # cat -> ProdChip: what is being built, shown in the top bar while the panel is hidden
+var obj_btn: Button       # brings the objective back after it hides itself
+var groups_box: VBoxContainer
 var tabs := {}
 var grid: GridContainer
 var grid_scroll: ScrollContainer
@@ -132,9 +136,20 @@ func _build_hud() -> void:
 	sw_box = _pill(top, "SKYFALL"); sw_name = sw_box.get_child(0).get_child(0); sw_time = lbl("0:00", f_disp, 16, Color("ffd0cc")); sw_box.get_child(0).add_child(sw_time); sw_box.visible = false
 	var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL; sp.mouse_filter = Control.MOUSE_FILTER_IGNORE; top.add_child(sp)
 	# hides the side panel (build menu + minimap) for a wider view; stays in the top bar either way
+	for cat in ["bld", "inf", "veh", "air"]:
+		var pc := ProdChip.new(); pc.ui = self; pc.cat = cat; pc.custom_minimum_size = Vector2(54, 44); pc.visible = false
+		top.add_child(pc); prod_chips[cat] = pc
+	var mp := mkbtn("Map", func(): main.toggle_big_map(), 56, 44, 12); top.add_child(mp); btn["map"] = mp
 	var pb := mkbtn("»", func(): main.toggle_panel(), 44, 44, 16); top.add_child(pb); btn["panel"] = pb
 	var mb := mkbtn("II", func(): main.open_menu(), 44, 44, 16); top.add_child(mb)
-	obj_box = PanelContainer.new(); obj_box.position = Vector2(8, 66); obj_box.custom_minimum_size = Vector2(300, 0); obj_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	big_map = MiniMap.new(); big_map.ui = self; big_map.src = true
+	big_map.anchor_left = 1; big_map.anchor_right = 1; big_map.offset_left = -8 - 280; big_map.offset_right = -8; big_map.offset_top = 60; big_map.offset_bottom = 60 + 280
+	big_map.visible = false; hud.add_child(big_map)
+	# the objective shows for a few seconds, then folds into this button (tap the box to fold it sooner)
+	obj_btn = mkbtn("Objective", func(): main.show_objective(), 0, 36, 11); obj_btn.position = Vector2(8, 66); obj_btn.visible = false
+	obj_btn.add_theme_color_override("font_color", C_AUR); hud.add_child(obj_btn)
+	obj_box = PanelContainer.new(); obj_box.position = Vector2(8, 66); obj_box.custom_minimum_size = Vector2(300, 0); obj_box.mouse_filter = Control.MOUSE_FILTER_STOP
+	obj_box.gui_input.connect(func(ev): if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT: main.hide_objective())
 	obj_box.add_theme_stylebox_override("panel", _left_bar(C_AUR))
 	var ov := VBoxContainer.new(); ov.add_theme_constant_override("separation", 3); obj_box.add_child(ov)
 	ov.add_child(lbl("OBJECTIVE", f_disp, 11, C_AUR))
@@ -145,6 +160,16 @@ func _build_hud() -> void:
 	toast_l = lbl("", f_disp, 13); toast_box.add_child(toast_l); toast_box.visible = false
 	toast_box.anchor_left = 0.5; toast_box.anchor_right = 0.5; toast_box.offset_top = 64; toast_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	hud.add_child(toast_box)
+	# army groups on the left edge: tap selects the group, tap again centres the camera, hold stores the selection
+	groups_box = VBoxContainer.new(); groups_box.add_theme_constant_override("separation", 6); groups_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	groups_box.anchor_top = 0.5; groups_box.anchor_bottom = 0.5; groups_box.offset_left = 8; groups_box.grow_vertical = Control.GROW_DIRECTION_BOTH
+	groups_box.offset_top = -95; groups_box.offset_bottom = 95
+	hud.add_child(groups_box)
+	for i in 4:
+		var g := mkbtn(str(i + 1), func(): pass, 52, 42, 13); g.add_theme_stylebox_override("normal", sb(Color(0.08, 0.1, 0.12, 0.85), Color("3b4a54")))
+		g.button_down.connect(func(): g.set_meta("t0", Time.get_ticks_msec()))
+		g.button_up.connect(func(): main.group_btn(i, Time.get_ticks_msec() - int(g.get_meta("t0", 0)) > 500))
+		groups_box.add_child(g); btn["grp%d" % i] = g
 	# two rows in the bottom-left corner, close to the thumb: unit groups at the bottom, orders above
 	cmd_row = VBoxContainer.new(); cmd_row.add_theme_constant_override("separation", 6); cmd_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	cmd_row.anchor_top = 1; cmd_row.anchor_bottom = 1; cmd_row.offset_left = 8; cmd_row.offset_bottom = -8
@@ -462,7 +487,7 @@ func _build_overlays() -> void:
 	d = frame(c, 10)
 	d.add_child(eyebrow("Field manual  //  standing orders"))
 	d.add_child(title("Controls", 40))
-	for row in [["TOUCH", "Drag with two fingers to move the map, pinch to zoom · tap a unit to select it, then tap the ground to move there or an enemy to attack it · tap another of your units to switch to it · drag one finger across your units to box-select · double-tap a unit to grab every unit of that type on screen · hold, then drag at the destination to face a formation · hold and let go, or ✕, to deselect · long-press a build button to cancel."], ["MOUSE", "Click to select or command, drag to box-select, double-click a unit for all of its type, right-drag to face a formation, middle-drag or WASD to scroll, wheel to zoom."], ["PANEL", "» in the top bar hides the build menu and minimap for a wider view; « BUILD brings them back. It lights up as « READY when a building is waiting to be placed."]]:
+	for row in [["TOUCH", "Drag with two fingers to move the map, pinch to zoom · tap a unit to select it, then tap the ground to move there or an enemy to attack it · tap another of your units to switch to it · drag one finger across your units to box-select · double-tap a unit to grab every unit of that type on screen · hold, then drag at the destination to face a formation · hold and let go, or ✕, to deselect · long-press a build button to cancel."], ["MOUSE", "Click to select or command, drag to box-select, double-click a unit for all of its type, right-drag to face a formation, middle-drag or WASD to scroll, wheel to zoom."], ["PANEL", "» in the top bar hides the build menu and minimap for a wider view; « BUILD brings them back. While it is hidden, the top bar shows what is in production (tap a ready building to place it). MAP opens a large minimap: tap or drag on it to look there."], ["BUILD", "Tap to order, hold a unit to order five, tap the corner ✕ to cancel one (or long-press a building). Drag a ready building out of the menu and let go where it should stand; it is drawn above your finger."], ["GROUPS", "Select units, then hold 1 to 4 on the left edge to store them. Tap a group to select it, tap again to jump to it. The objective folds away after a few seconds; tap OBJECTIVE to see it again."]]:
 		var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 12); d.add_child(h)
 		var k := lbl(row[0], f_wide, 11, W_BRASS); k.custom_minimum_size.x = 60; h.add_child(k)
 		var t := lbl(row[1], f_body, 13, Color("d6cfba")); t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; t.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(t)
@@ -860,6 +885,7 @@ class HudDraw extends Control:
 
 class MiniMap extends Control:
 	var ui
+	var src := false   # draws the side panel minimap's texture (the enlarged copy)
 	var tex: ImageTexture
 	var img: Image
 	var dragging := false
@@ -869,8 +895,8 @@ class MiniMap extends Control:
 		tex = ImageTexture.create_from_image(img)
 	func _draw() -> void:
 		draw_rect(Rect2(Vector2.ZERO, size), Color.BLACK)
-		draw_texture_rect(tex, Rect2(Vector2.ZERO, size), false)
-		draw_rect(Rect2(Vector2.ZERO, size), UI.C_LINE, false, 1.0)
+		draw_texture_rect(ui.mini.tex if src else tex, Rect2(Vector2.ZERO, size), false)
+		draw_rect(Rect2(Vector2.ZERO, size), UI.C_LINE, false, 2.0 if src else 1.0)
 		if ui.main: ui.main.draw_mini_overlay(self)
 	func _gui_input(ev: InputEvent) -> void:
 		if ev is InputEventMouseButton and ev.button_index == MOUSE_BUTTON_LEFT:
@@ -894,25 +920,43 @@ class BuildItem extends Control:
 	var locked := false
 	var lp_t := -1.0
 	var did := false
+	var press_at := Vector2()
+	var dragging := false   # a ready building being dragged out onto the map
+	const CANCEL := Vector2(26, 26)   # top-left corner of an item with orders: tap it to cancel one
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_PASS
 	func _process(dt: float) -> void:
 		if lp_t >= 0:
 			lp_t += dt
 			if lp_t > 0.55 and not did:
-				did = true; ui.main.cancel_item(cat, type)
+				# hold: units queue five at once; a building cancels
+				did = true
+				if cat == "bld": ui.main.cancel_item(cat, type)
+				else: ui.main.queue_many(cat, type, 5)
+	func _has_orders() -> bool:
+		return active or n > 0 or is_ready
 	func _gui_input(ev: InputEvent) -> void:
 		if ev is InputEventMouseButton:
 			if ev.button_index == MOUSE_BUTTON_RIGHT and ev.pressed:
 				ui.main.cancel_item(cat, type); accept_event(); return
 			if ev.button_index != MOUSE_BUTTON_LEFT: return
 			if ev.pressed:
-				lp_t = 0.0; did = false
+				lp_t = 0.0; did = false; press_at = ev.position; dragging = false
 			else:
-				if lp_t >= 0 and not did and Rect2(Vector2.ZERO, size).has_point(ev.position): ui.main.click_item(cat, type)
+				if dragging:
+					dragging = false; ui.main.drag_build_end(get_global_transform() * ev.position); accept_event()
+				elif lp_t >= 0 and not did and Rect2(Vector2.ZERO, size).has_point(ev.position):
+					if _has_orders() and Rect2(Vector2.ZERO, CANCEL).has_point(ev.position): ui.main.cancel_item(cat, type)
+					else: ui.main.click_item(cat, type)
 				lp_t = -1.0
-		elif ev is InputEventMouseMotion and lp_t >= 0 and ev.relative.length() > 6:
-			lp_t = -1.0  # it's a scroll, not a press
+		elif ev is InputEventMouseMotion and (lp_t >= 0 or dragging):
+			if dragging:
+				ui.main.drag_build_move(get_global_transform() * ev.position); accept_event()
+			elif cat == "bld" and is_ready and ev.position.distance_to(press_at) > 10:
+				dragging = true; lp_t = -1.0; did = true
+				ui.main.drag_build_start(type, get_global_transform() * ev.position); accept_event()
+			elif ev.relative.length() > 6:
+				lp_t = -1.0  # it's a scroll, not a press
 	func _draw() -> void:
 		var d: Dictionary = D.def_of(type)
 		var a := 0.32 if locked else 1.0
@@ -942,6 +986,35 @@ class BuildItem extends Control:
 				for p in pts: cp.append(Vector2(clamp(p.x, clip.position.x, clip.end.x), clamp(p.y, clip.position.y, clip.end.y)))
 				draw_colored_polygon(cp, Color(0, 0, 0, 0.62))
 		if n > 1: draw_string(ui.f_disp7, Vector2(size.x - 18, 15), str(n), HORIZONTAL_ALIGNMENT_RIGHT, 14, 12, Color.WHITE)
+		if _has_orders():  # cancel corner
+			draw_rect(Rect2(Vector2(2, 2), CANCEL - Vector2(6, 6)), Color(0, 0, 0, .7))
+			draw_line(Vector2(7, 7), Vector2(17, 17), UI.C_FG, 2); draw_line(Vector2(17, 7), Vector2(7, 17), UI.C_FG, 2)
 		if is_ready and int(Time.get_ticks_msec() / 500) % 2 == 0:
 			draw_rect(Rect2(0, 18, size.x, 18), UI.C_ACC)
 			draw_string(ui.f_disp7, Vector2(0, 32), "READY", HORIZONTAL_ALIGNMENT_CENTER, size.x, 12, Color.WHITE)
+
+## Top-bar chip for one production line while the side panel is hidden: icon, progress, queue size.
+## Tap: place a ready building, otherwise open the panel on that tab.
+class ProdChip extends Control:
+	var ui
+	var cat := ""
+	var type := ""
+	var prog := 0.0
+	var n := 0
+	var is_ready := false
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_STOP
+	func _gui_input(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton and ev.button_index == MOUSE_BUTTON_LEFT and not ev.pressed:
+			ui.main.prod_chip_tap(cat); accept_event()
+	func _draw() -> void:
+		draw_style_box(UI.sb(Color(0.047, 0.063, 0.075, 0.86), UI.C_AUR if is_ready else UI.C_LINE), Rect2(Vector2.ZERO, size))
+		var it = ui.items.get(cat + ":" + type)
+		var ir := Rect2(4, 3, size.x - 8, size.y - 13)
+		if it and it.icon: draw_texture_rect(it.icon, ir, false)
+		draw_rect(Rect2(4, size.y - 7, size.x - 8, 4), Color("26313a"))
+		draw_rect(Rect2(4, size.y - 7, (size.x - 8) * clampf(prog, 0, 1), 4), UI.C_AUR)
+		if n > 1: draw_string(ui.f_disp7, Vector2(0, 14), str(n), HORIZONTAL_ALIGNMENT_RIGHT, size.x - 4, 12, Color.WHITE)
+		if is_ready and int(Time.get_ticks_msec() / 500) % 2 == 0:
+			draw_rect(Rect2(0, size.y / 2 - 9, size.x, 15), UI.C_ACC)
+			draw_string(ui.f_disp7, Vector2(0, size.y / 2 + 3), "READY", HORIZONTAL_ALIGNMENT_CENTER, size.x, 11, Color.WHITE)

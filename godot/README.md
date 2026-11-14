@@ -34,6 +34,11 @@ Copy it to the phone and open it (allow "install unknown apps"). It installs nex
   **Hold, then drag** at the destination to place a formation along the drag line; it faces away from you for a left-to-right drag. You see a preview while dragging.
   Long-press a build button to cancel it. **»** in the top bar hides the side panel (build menu + minimap,
   remembered in `user://prefs.json`); **« BUILD** shows it again and reads **« READY** when a building waits to be placed.
+  While hidden, top-bar chips show each busy production line (tap a ready building to place it). **MAP** opens a large
+  minimap (tap/drag to look there). Hold a unit button to queue five; tap an item's corner ✕ to cancel one. Drag a ready
+  building out of the menu to place it (drawn 70 UI units above the finger). Army groups 1–4 on the left edge: hold to
+  store the selection, tap to select, tap again to centre. The objective box folds into an OBJECTIVE button after 8 s
+  and comes back for each new goal. Tap targets around units are wider (32 UI units), and orders give a short vibration.
 - **Mouse**: click to select or command, drag to box-select, **double-click** for the whole type,
   **right-drag** to face a formation, middle-drag or WASD to scroll, wheel to zoom, right-click a build button to cancel.
 
