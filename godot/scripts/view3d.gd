@@ -41,6 +41,10 @@ var rally_mesh := ImmediateMesh.new()
 var preview: Dictionary
 var water_mat: ShaderMaterial
 var frame_no := 0
+var marks_root := Node3D.new()
+var mark_mat: StandardMaterial3D
+var beam_mat: StandardMaterial3D
+var mark_key := ""
 
 const PART_SHADER := """
 shader_type spatial;
@@ -61,6 +65,7 @@ shader_type spatial;
 render_mode diffuse_lambert, specular_schlick_ggx, cull_disabled, depth_draw_opaque;
 uniform sampler2D fog_tex : filter_linear, repeat_disable;
 uniform vec4 water_col : source_color = vec4(0.227, 0.525, 0.659, 0.84);
+uniform float glow = 0.0;
 varying vec3 wpos;
 void vertex() {
 	vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -70,10 +75,11 @@ void vertex() {
 void fragment() {
 	NORMAL = normalize(cross(dFdy(VERTEX), dFdx(VERTEX)));
 	float f = texture(fog_tex, wpos.xz / 64.0).r;
-	ALBEDO = water_col.rgb * f;
+	ALBEDO = water_col.rgb * f * (1.0 - glow * 0.5);
+	EMISSION = water_col.rgb * glow * f * (0.75 + 0.25 * sin(TIME * 1.7 + wpos.x * 0.9 + wpos.z * 0.6));
 	ALPHA = water_col.a;
-	ROUGHNESS = 0.25;
-	SPECULAR = 0.6 * f;
+	ROUGHNESS = 0.25 + glow * 0.6;
+	SPECULAR = 0.6 * f * (1.0 - glow);
 }
 """
 
@@ -103,7 +109,7 @@ func _ready() -> void:
 	env.fog_depth_curve = 1.0
 	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	var we := WorldEnvironment.new(); we.environment = env; add_child(we)
-	add_child(world); add_child(ents_root)
+	add_child(world); add_child(ents_root); add_child(marks_root)
 	var under := MeshInstance3D.new(); var pm := PlaneMesh.new(); pm.size = Vector2(600, 600); under.mesh = pm
 	var um := StandardMaterial3D.new(); um.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; um.albedo_color = Color("10161a"); under.material_override = um
 	under.position = Vector3(MW / 2.0, -0.9, MH / 2.0); add_child(under)
@@ -250,7 +256,12 @@ func build_world() -> void:
 		for i in range(1, HN - 1):
 			JX[j * HN + i] = (Sim.hash2(i, j, sd + 31) - .5) * .26; JZ[j * HN + i] = (Sim.hash2(i, j, sd + 32) - .5) * .26
 	var verts := PackedVector3Array(); var cols := PackedColorArray(); var norms := PackedVector3Array()
-	var BASEC := [Vector3(.36, .5, .22), Vector3(.5, .4, .27), Vector3(.68, .6, .42), Vector3(.47, .44, .4), Vector3(.2, .3, .33)]
+	var TH: Dictionary = D.THEMES[S.theme]
+	_apply_light(TH)
+	var v3 := func(a: Array) -> Vector3: return Vector3(a[0], a[1], a[2])
+	var BASEC := [v3.call(TH.grass), v3.call(TH.dirt), v3.call(TH.sand), v3.call(TH.rock), v3.call(TH.bed)]
+	var G0: Vector3 = v3.call(TH.grass); var GV: Vector3 = v3.call(TH.gvar); var CL: Vector3 = v3.call(TH.cliff); var RK: Vector3 = v3.call(TH.rock)
+	var BED: Vector3 = v3.call(TH.bed); var SND: Vector3 = v3.call(TH.sand)
 	var H := S.H
 	for j in HN - 1:
 		for i in HN - 1:
@@ -266,11 +277,11 @@ func build_world() -> void:
 				var hmin: float = min(h0, min(h1, h2)); var hmax: float = max(h0, max(h1, h2)); var hav := (h0 + h1 + h2) / 3.0
 				var base: Vector3 = BASEC[t]; var v := (Sim.hash2(i * 3 + k, j, sd + 41) - .5) * .07
 				if t == D.GRASS:
-					var p := Sim.fbm(i / 9.0, j / 9.0, sd + 50); base = Vector3(.3 + p * .12, .42 + p * .1, .2 + p * .04)
-				if hmax - hmin > .28 and t != D.WATER: base = Vector3(.44, .41, .37)
-				if t == D.ROCK: base = Vector3(.4 + hav * .12, .37 + hav * .11, .33 + hav * .1)
+					var p := Sim.fbm(i / 9.0, j / 9.0, sd + 50); base = G0 + GV * p
+				if hmax - hmin > .28 and t != D.WATER: base = CL
+				if t == D.ROCK: base = RK + Vector3(.12, .11, .1) * hav
 				if ore_t: base = Vector3(.5, .4, .24)
-				if t == D.WATER: base = Vector3(.22, .3, .3) if hav < -.4 else Vector3(.62, .56, .4)
+				if t == D.WATER: base = BED if hav < -.4 else SND * 0.92
 				var col := Color(base.x + v, base.y + v, base.z + v * .8).srgb_to_linear()
 				var p0: Vector3 = tr[0]; var p1: Vector3 = tr[1]; var p2: Vector3 = tr[2]
 				var n := (p1 - p0).cross(p2 - p0).normalized()
@@ -286,27 +297,30 @@ func build_world() -> void:
 	var wm := PlaneMesh.new(); wm.size = Vector2(MW, MH); wm.subdivide_width = 40; wm.subdivide_depth = 40
 	var water := MeshInstance3D.new(); water.mesh = wm; water.position = Vector3(MW / 2.0, -0.24, MH / 2.0)
 	var wsh := Shader.new(); wsh.code = WATER_SHADER; water_mat = ShaderMaterial.new(); water_mat.shader = wsh; water_mat.set_shader_parameter("fog_tex", fog_tex)
+	var wc: Array = TH.water
+	water_mat.set_shader_parameter("water_col", Color(wc[0], wc[1], wc[2], wc[3])); water_mat.set_shader_parameter("glow", 0.9 if TH.get("lava", false) else 0.0)
 	water.material_override = water_mat; water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	world.add_child(water)
 	# decor
 	var R := RandomNumberGenerator.new(); R.seed = sd + 77
 	var trees: Array = []; var rocks: Array = []; var bushes: Array = []
-	var A := Vector2(MW - 1 - D.P0.x, MH - 1 - D.P0.y)
+	var A := Vector2(S.e0) if S.e0 != null else Vector2(-99, -99)
+	var tden: float = TH.tden; var bden: float = tden + TH.bden
 	for ty in MH:
 		for tx in MW:
 			var i := ty * MW + tx; var t: int = S.terr[i]
 			if S.ore[i]: continue
-			var near := Vector2(tx, ty).distance_to(Vector2(D.P0)) < 6 or Vector2(tx, ty).distance_to(A) < 6
+			var near := Vector2(tx, ty).distance_to(Vector2(S.p0)) < 6 or Vector2(tx, ty).distance_to(A) < 6
 			if t == D.GRASS and not near:
 				var r := R.randf()
-				if r < .075: trees.append({"tx": tx, "ty": ty, "x": tx + .2 + R.randf() * .6, "z": ty + .2 + R.randf() * .6, "s": .75 + R.randf() * .6, "c": R.randf()})
-				elif r < .16: bushes.append({"tx": tx, "ty": ty, "x": tx + R.randf(), "z": ty + R.randf(), "s": .12 + R.randf() * .1})
+				if r < tden: trees.append({"tx": tx, "ty": ty, "x": tx + .2 + R.randf() * .6, "z": ty + .2 + R.randf() * .6, "s": .75 + R.randf() * .6, "c": R.randf()})
+				elif r < bden: bushes.append({"tx": tx, "ty": ty, "x": tx + R.randf(), "z": ty + R.randf(), "s": .12 + R.randf() * .1})
 			elif t == D.ROCK and R.randf() < .18: rocks.append({"tx": tx, "ty": ty, "x": tx + R.randf(), "z": ty + R.randf(), "s": .18 + R.randf() * .25, "ry": R.randf() * 6})
 			elif (t == D.DIRT or t == D.SAND) and R.randf() < .05: rocks.append({"tx": tx, "ty": ty, "x": tx + R.randf(), "z": ty + R.randf(), "s": .06 + R.randf() * .07, "ry": R.randf() * 6})
 	var lit := Models.material
 	decor = {"trees": trees, "rocks": rocks, "bushes": bushes,
 		"trunk": _wbatch(_mesh_from("cyl", {"rt": .7, "seg": 5}), lit, trees.size()),
-		"crown": _wbatch(_mesh_from("cone", {"seg": 5}), lit, trees.size() * 2),
+		"crown": _wbatch(_mesh_from("ico" if TH.trees == "broad" else "cone", {"seg": 5}), lit, trees.size() * 2),
 		"rk": _wbatch(_mesh_from("ico"), lit, rocks.size()),
 		"bu": _wbatch(_mesh_from("ico"), lit, bushes.size())}
 	# ore
@@ -318,6 +332,35 @@ func build_world() -> void:
 	var zb := PackedFloat32Array(); zb.resize(mm.instance_count * 16); mm.buffer = zb; mm.visible_instance_count = 0
 	ore_mm = MultiMeshInstance3D.new(); ore_mm.multimesh = mm; ore_mm.material_override = lit; world.add_child(ore_mm)
 	refresh_decor(); upd_ore()
+	mark_key = "-"
+
+func _apply_light(TH: Dictionary) -> void:
+	var L: Dictionary = D.DUSK if S.dusk else TH
+	sun.light_color = Color(L.sun); sun.light_energy = L.sunE
+	env.ambient_light_color = Color(L.amb); env.ambient_light_energy = L.ambE
+
+## Objective rings with a light beam (reach, escort, hold, survive zones), coloured by who holds them.
+func upd_marks() -> void:
+	var ms: Array = S.marks()
+	var key := str(ms)
+	if key == mark_key: return
+	mark_key = key
+	for c in marks_root.get_children(): c.queue_free()
+	if mark_mat == null:
+		mark_mat = StandardMaterial3D.new(); mark_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; mark_mat.vertex_color_use_as_albedo = true
+		mark_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; mark_mat.cull_mode = BaseMaterial3D.CULL_DISABLED; mark_mat.no_depth_test = false
+		beam_mat = mark_mat.duplicate(); beam_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	for m in ms:
+		var col: Color = [Color("f0b93f"), Color("7fd68e"), Color("ff5a52"), Color("f0b93f")][m[3] + 1]
+		var cx: float = m[0] + .5; var cz: float = m[1] + .5
+		var ring := MeshInstance3D.new(); ring.mesh = _ring_mesh(0.9, 40); ring.material_override = mark_mat.duplicate()
+		ring.material_override.albedo_color = Color(col, .85); ring.scale = Vector3(m[2], 1, m[2])
+		ring.position = Vector3(cx, max(S.h_at(cx * T, cz * T), -0.1) + .06, cz); ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		marks_root.add_child(ring)
+		var beam := MeshInstance3D.new(); var cm := CylinderMesh.new(); cm.top_radius = .06; cm.bottom_radius = .16; cm.height = 3.0; cm.radial_segments = 8; cm.cap_top = false; cm.cap_bottom = false
+		beam.mesh = cm; beam.material_override = beam_mat.duplicate(); beam.material_override.albedo_color = Color(col, .22)
+		beam.position = ring.position + Vector3(0, 1.5, 0); beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		marks_root.add_child(beam)
 
 func _wbatch(mesh: Mesh, mat: Material, n: int) -> MultiMeshInstance3D:
 	var mm := MultiMesh.new(); mm.transform_format = MultiMesh.TRANSFORM_3D; mm.use_colors = true; mm.mesh = mesh; mm.instance_count = max(1, n)
@@ -332,17 +375,29 @@ func _xf(x: float, y: float, z: float, sx: float, sy: float, sz: float, rx := 0.
 
 func refresh_decor() -> void:
 	if decor.is_empty(): return
-	var tc := [Color("3f6b2c"), Color("4f7d33"), Color("355e2a"), Color("6b8a3a")]
-	var trunk_c := Color("5a4130").srgb_to_linear(); var rock_c := Color("8a8174").srgb_to_linear(); var bush_c := Color("4f7a34").srgb_to_linear()
+	var TH: Dictionary = D.THEMES[S.theme]
+	var tc: Array = TH.tcol.map(func(h): return Color(h))
+	var trunk_c := Color(TH.trunk).srgb_to_linear(); var rock_c := Color(TH.stone).srgb_to_linear(); var bush_c := Color(TH.bush).srgb_to_linear()
+	var style: String = TH.trees; var snow_c := Color("e8eef2").srgb_to_linear()
 	var tr: MultiMesh = decor.trunk.multimesh; var cr: MultiMesh = decor.crown.multimesh; var rk: MultiMesh = decor.rk.multimesh; var bu: MultiMesh = decor.bu.multimesh
 	var k := 0
 	for t in decor.trees:
 		var s: float = 0.001 if S.bmap[t.ty * MW + t.tx] else t.s
 		var y := S.h_at(t.x * T, t.z * T)
-		tr.set_instance_transform(k, _xf(t.x, y + .12 * s, t.z, .06 * s, .25 * s, .06 * s)); tr.set_instance_color(k, trunk_c)
 		var c: Color = tc[int(t.c * 4)].srgb_to_linear()
-		cr.set_instance_transform(k * 2, _xf(t.x, y + .42 * s, t.z, .3 * s, .45 * s, .3 * s, 0, t.c * 3)); cr.set_instance_color(k * 2, c)
-		cr.set_instance_transform(k * 2 + 1, _xf(t.x, y + .68 * s, t.z, .22 * s, .35 * s, .22 * s, 0, t.c * 5)); cr.set_instance_color(k * 2 + 1, c)
+		match style:
+			"dead":
+				tr.set_instance_transform(k, _xf(t.x, y + .22 * s, t.z, .045 * s, .45 * s, .045 * s, (t.c - .5) * .2, 0, (t.c - .5) * .25)); tr.set_instance_color(k, trunk_c)
+				cr.set_instance_transform(k * 2, _xf(t.x + .05 * s, y + .4 * s, t.z, .03 * s, .3 * s, .03 * s, 0, t.c * 6, .9)); cr.set_instance_color(k * 2, trunk_c)
+				cr.set_instance_transform(k * 2 + 1, _xf(t.x - .04 * s, y + .5 * s, t.z, .025 * s, .25 * s, .025 * s, 0, t.c * 9, -.8)); cr.set_instance_color(k * 2 + 1, c)
+			"broad":
+				tr.set_instance_transform(k, _xf(t.x, y + .16 * s, t.z, .06 * s, .32 * s, .06 * s)); tr.set_instance_color(k, trunk_c)
+				cr.set_instance_transform(k * 2, _xf(t.x, y + .5 * s, t.z, .26 * s, .22 * s, .26 * s, 0, t.c * 3)); cr.set_instance_color(k * 2, c)
+				cr.set_instance_transform(k * 2 + 1, _xf(t.x + .08 * s, y + .64 * s, t.z - .05 * s, .17 * s, .15 * s, .17 * s, 0, t.c * 5)); cr.set_instance_color(k * 2 + 1, tc[(int(t.c * 4) + 1) % 4].srgb_to_linear())
+			_:
+				tr.set_instance_transform(k, _xf(t.x, y + .12 * s, t.z, .06 * s, .25 * s, .06 * s)); tr.set_instance_color(k, trunk_c)
+				cr.set_instance_transform(k * 2, _xf(t.x, y + .42 * s, t.z, .3 * s, .45 * s, .3 * s, 0, t.c * 3)); cr.set_instance_color(k * 2, c)
+				cr.set_instance_transform(k * 2 + 1, _xf(t.x, y + .68 * s, t.z, .22 * s, .35 * s, .22 * s, 0, t.c * 5)); cr.set_instance_color(k * 2 + 1, snow_c if style == "snowpine" else c)
 		k += 1
 	k = 0
 	for t in decor.rocks:
@@ -824,6 +879,6 @@ func upd_preview(slots: Array, from, to) -> void:
 func render(dt: float, placing, preview_slots: Array, pv_from, pv_to) -> void:
 	update_cam()
 	if S == null: return
-	sync_ents(S.time); draw_parts(); upd_ghost(placing); upd_rally(); upd_preview(preview_slots, pv_from, pv_to)
+	sync_ents(S.time); draw_parts(); upd_marks(); upd_ghost(placing); upd_rally(); upd_preview(preview_slots, pv_from, pv_to)
 	ore_t -= dt
 	if ore_t <= 0: ore_t = .3; upd_ore()

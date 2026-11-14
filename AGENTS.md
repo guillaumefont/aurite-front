@@ -25,7 +25,9 @@
 - `web-3d/`: the low-poly 3D browser version the port is based on (one HTML file). Reference only.
 - `android-webview/`: older Android WebView wrapper around `web-3d` (`build.sh`, no Gradle). Not built by CI.
 - `web-2d/`: original 2D prototype. Archived.
-- The game is called "Aurite Front". The player faction is blue `#3fb4e8`, the AI is red `#e0423a`.
+- The game is called "Aurite Front". Team colours follow the faction (`D.FCOL`, set per match by `D.set_team_colors`):
+  the Vanguard is blue `#3fb4e8`, the Ashen Pact red `#e0423a`. Guillaume, 2026-11-14: the game is red themed, so
+  campaign I is played as the (red) Ashen Pact and campaign II as the Vanguard.
 
 ## CI (`.github/workflows/`)
 
@@ -56,6 +58,18 @@ godot --headless tests/sim_test.tscn   # must end with SIM TEST DONE and no SCRI
   Sold and destroyed buildings stay in `View3D.recs` until their animation ends (`Ent.end_kind`, `end_t`).
 - Check them with `AF_SHOT=<dir> AF_MODE=b xvfb-run godot --path godot`. The test pauses the sim, so it moves
   `S.time` by hand between shots.
+
+## Campaigns
+
+- Missions live in `godot/scripts/campaign.gd` (two campaigns, 8 missions each). Each one draws its own map with
+  `MapGen` (rivers, lakes, ridges, mesas, sea, roads, ore) in one of the landscapes in `D.THEMES`, optionally at dusk.
+- Goals run in order (`Sim.mission_tick`): destroy_all, kill (types and/or tag), mine, survive, reach, hold, escort,
+  rescue, capture. `keep` loses the mission when a hero or the Command Yard is gone. Heroes (`vey`, `furnace`, `harrow`,
+  `saint`) and the Convoy Truck are mission-only units (`req: ["never"]`).
+- `tests/sim_test.gd` sets up every mission, runs it a minute, then wins it goal by goal by cheating (`solve()`).
+  Add a branch there for any new goal kind.
+- `AF_MODE=camp AF_SHOT=<dir>` shoots the campaign menu, every briefing, every opening view and a wide map view.
+- Progress is saved per campaign in `user://campaigns.json`.
 
 ## Audio and UI on phones
 

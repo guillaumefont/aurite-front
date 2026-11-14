@@ -51,6 +51,8 @@ var items := {}
 var overlays := {}
 var start_mode := "campaign"
 var camp_pane: VBoxContainer
+var camp_box: VBoxContainer
+var camp_tag: Label
 var sk_pane: VBoxContainer
 var seg_btns := {}
 
@@ -355,14 +357,19 @@ func _build_overlays() -> void:
 	var tl := VBoxContainer.new(); tl.add_theme_constant_override("separation", -16)
 	tl.add_child(title("Aurite", 70)); tl.add_child(lbl("FRONT", f_title, 70, C_ACC)); lc.add_child(tl)
 	var rule := Hazard.new(); rule.stripe = true; rule.custom_minimum_size = Vector2(0, 8); lc.add_child(rule)
-	var lede := lbl("Two armies dig in over the aurite fields of the Sable valley. Lead the Vanguard through the campaign, or pick a side in a skirmish.", f_body, 14, Color("cfc6ad"))
+	var lede := lbl("Two armies fight over the aurite fields of the Sable valley. Rise with the Ashen Pact in the first campaign, return with the Vanguard in the second, or pick a side in a skirmish.", f_body, 14, Color("cfc6ad"))
 	lede.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; lc.add_child(lede)
 	var lsp := Control.new(); lsp.size_flags_vertical = Control.SIZE_EXPAND_FILL; lc.add_child(lsp)
 	var fm := ghost("Field manual", func(): show_overlay("manual"), 40); fm.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN; fm.custom_minimum_size.x = 170; lc.add_child(fm)
 	var rc := VBoxContainer.new(); rc.size_flags_horizontal = Control.SIZE_EXPAND_FILL; cols.add_child(rc)
 	var d := frame(rc, 10)
-	seg(d, "mode", [["campaign", "Campaign"], ["skirmish", "Skirmish"]], "campaign", func(m): start_mode = m; camp_pane.visible = m == "campaign"; sk_pane.visible = m == "skirmish")
-	camp_pane = VBoxContainer.new(); camp_pane.add_theme_constant_override("separation", 6); d.add_child(camp_pane)
+	seg(d, "mode", [["campaign", "Campaign"], ["skirmish", "Skirmish"]], "campaign", func(m): start_mode = m; camp_box.visible = m == "campaign"; sk_pane.visible = m == "skirmish")
+	camp_box = VBoxContainer.new(); camp_box.add_theme_constant_override("separation", 8); d.add_child(camp_box)
+	var co: Array = []
+	for C in D.CAMPAIGNS: co.append([C.id, C.num + " · " + C.name, D.FACS[C.fac].name + (" · start here" if C.num == "I" else " · a year later")])
+	seg(camp_box, "camp", co, D.CAMPAIGNS[0].id, func(id): main.pick_campaign(id))
+	camp_tag = lbl("", f_body, 12, W_SAND); camp_tag.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; camp_box.add_child(camp_tag)
+	camp_pane = VBoxContainer.new(); camp_pane.add_theme_constant_override("separation", 5); camp_box.add_child(camp_pane)
 	sk_pane = VBoxContainer.new(); sk_pane.add_theme_constant_override("separation", 8); sk_pane.visible = false; d.add_child(sk_pane)
 	sk_pane.add_child(eyebrow("Choose your army", W_SAND))
 	seg(sk_pane, "fac", [["vanguard", "Vanguard", "Heavy armor, Rangers, Skyhawk gunships, Bastion cannons, Skyfall missiles"], ["ashen", "Ashen Pact", "Fast raiders, Pyros, Wasp drones, Arc weapons, the Rift Engine"]], "vanguard", func(f): main.sk_fac = f)
@@ -401,6 +408,7 @@ func _build_overlays() -> void:
 	btn.end_eye = eyebrow("Operation complete"); ev.add_child(btn.end_eye)
 	btn.end_title = title("Victory", 60); ev.add_child(btn.end_title)
 	btn.end_stamp = Stamp.new(); btn.end_stamp.custom_minimum_size = Vector2(170, 70); eh.add_child(btn.end_stamp)
+	btn.end_why = lbl("", f_body, 14, Color("ffb0a8")); btn.end_why.visible = false; d.add_child(btn.end_why)
 	btn.end_stats = GridContainer.new(); btn.end_stats.columns = 5; btn.end_stats.add_theme_constant_override("h_separation", 8); btn.end_stats.add_theme_constant_override("v_separation", 8); d.add_child(btn.end_stats)
 	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 8); d.add_child(row)
 	btn.next = cta("Next mission", func(): main.next_mission()); btn.next.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(btn.next)
@@ -414,7 +422,9 @@ func _build_overlays() -> void:
 	btn.br_eye = eyebrow("Mission 1"); bv.add_child(btn.br_eye)
 	btn.br_title = title("Landfall", 48); bv.add_child(btn.br_title)
 	var cl := Stamp.new(); cl.text = "CLASSIFIED"; cl.col = C_ACC; cl.custom_minimum_size = Vector2(170, 60); bh.add_child(cl)
+	btn.br_theatre = lbl("", f_wide, 11, W_SAND); btn.br_theatre.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; d.add_child(btn.br_theatre)
 	btn.br_text = lbl("", f_body, 14, Color("d6cfba")); btn.br_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; d.add_child(btn.br_text)
+	btn.br_heroes = HBoxContainer.new(); btn.br_heroes.add_theme_constant_override("separation", 8); d.add_child(btn.br_heroes)
 	var ob := PanelContainer.new(); ob.add_theme_stylebox_override("panel", _left_bar(W_BRASS)); d.add_child(ob)
 	var obv := VBoxContainer.new(); ob.add_child(obv); obv.add_child(eyebrow("Objectives"))
 	btn.br_obj = lbl("", f_body, 14, W_KHAKI); btn.br_obj.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; obv.add_child(btn.br_obj)
@@ -444,12 +454,32 @@ func set_end_result(win: bool) -> void:
 	btn.end_stamp.col = W_GREEN if win else C_ACC
 	btn.end_stamp.queue_redraw()
 
-func render_missions(done: int) -> void:
+const HERO_LINES := {
+	"vey": "Pact commando. Arc carbine that jumps between targets.",
+	"furnace": "Old Brann's arc tank, forged from a smelter.",
+	"harrow": "Vanguard marksman. Rail rifle, long reach.",
+	"saint": "Marshal Dace's command tank. Heavy twin cannon.",
+}
+
+func set_brief_heroes(list: Array, fac: String) -> void:
+	for ch in btn.br_heroes.get_children(): ch.queue_free()
+	btn.br_heroes.visible = list.size() > 0
+	for h in list:
+		var p := PanelContainer.new(); p.add_theme_stylebox_override("panel", cut(W_OLIVE2, W_BRASS, 1, 7, 7.0)); p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 0); p.add_child(v)
+		var own: bool = D.UN[h].fac == fac
+		v.add_child(lbl(("HERO  //  " if own else "ENEMY HERO  //  ") + D.UN[h].name.to_upper(), f_wide, 11, W_BRASS if own else C_ACC))
+		var t := lbl(HERO_LINES.get(h, ""), f_body, 12, W_SAND); t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; v.add_child(t)
+		btn.br_heroes.add_child(p)
+
+func render_missions(C: Dictionary, done: int) -> void:
+	camp_tag.text = C.tag
+	_seg_pick("camp", C.id)
 	for ch in camp_pane.get_children(): ch.queue_free()
-	for i in D.MISSIONS.size():
-		var m: Dictionary = D.MISSIONS[i]
-		var b := Button.new(); b.focus_mode = Control.FOCUS_NONE; b.custom_minimum_size = Vector2(0, 50); b.disabled = i > done
-		var nx := i == done
+	for i in C.missions.size():
+		var m: Dictionary = C.missions[i]
+		var b := Button.new(); b.focus_mode = Control.FOCUS_NONE; b.custom_minimum_size = Vector2(0, 46); b.disabled = i > done
+		var nx: bool = i == done
 		b.add_theme_stylebox_override("normal", cut(W_SEL if nx else W_OLIVE2, C_ACC if nx else W_LINE, 1, 7))
 		b.add_theme_stylebox_override("hover", cut(W_SEL if nx else W_OLIVE2, W_SAND, 1, 7))
 		b.add_theme_stylebox_override("pressed", cut(W_OLIVE2.darkened(0.2), W_SAND, 1, 7))
@@ -457,8 +487,8 @@ func render_missions(done: int) -> void:
 		var h := HBoxContainer.new(); h.set_anchors_preset(Control.PRESET_FULL_RECT); h.offset_left = 10; h.offset_right = -10; h.add_theme_constant_override("separation", 10); h.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var n := lbl("%02d" % (i + 1), f_title, 20, C_ACC if nx else W_SAND); n.custom_minimum_size.x = 36; n.size_flags_vertical = Control.SIZE_SHRINK_CENTER; h.add_child(n)
 		var v := VBoxContainer.new(); v.size_flags_horizontal = Control.SIZE_EXPAND_FILL; v.alignment = BoxContainer.ALIGNMENT_CENTER; v.mouse_filter = Control.MOUSE_FILTER_IGNORE; v.add_theme_constant_override("separation", -1)
-		v.add_child(lbl("OPERATION " + m.title.to_upper(), f_wide, 14, W_KHAKI)); v.add_child(lbl(m.tag, f_body, 12, W_SAND)); h.add_child(v)
-		var st := Stamp.new(); st.small = true; st.custom_minimum_size = Vector2(104, 40); st.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		v.add_child(lbl("OPERATION " + m.title.to_upper(), f_wide, 14, W_KHAKI)); v.add_child(lbl(m.tag + "  ·  " + D.THEMES[m.map.theme].name, f_body, 12, W_SAND)); h.add_child(v)
+		var st := Stamp.new(); st.small = true; st.custom_minimum_size = Vector2(104, 38); st.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		st.text = "SECURED" if i < done else ("ORDERS IN" if nx else "CLASSIFIED")
 		st.col = W_GREEN if i < done else (W_BRASS if nx else W_SAND)
 		st.mouse_filter = Control.MOUSE_FILTER_IGNORE; h.add_child(st)

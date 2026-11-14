@@ -305,6 +305,21 @@ static func infantry(B: Builder, b: Node3D, type: String) -> void:
 			B.box(M.gold, .14, .045, .14, 0, .37, 0, b); B.box(M.gold, .1, .02, .16, .02, .355, 0, b); B.box(M.orange, .08, .07, .11, .02, .13, .14, b); B.box(M.metal, .03, .03, .16, .1, .2, -.1, b); B.flash_mesh(b, .12, .2, .12, .05)
 		"ranger":
 			B.box(M.olive2, .13, .06, .14, -.01, .37, 0, b); B.box(M.olive2, .1, .16, .18, -.03, .22, 0, b); B.box(M.dark, .36, .025, .025, .14, .23, .07, b); B.cyl(M.dark, .018, .018, .08, 5, .1, .26, .07, b, Vector3(0, 0, PI / 2)); B.flash_mesh(b, .33, .23, .07, .06)
+		"vey":
+			# hooded commando: long dark coat, orange scarf, arc carbine with a violet coil, glowing visor
+			b.scale = Vector3.ONE * 1.95
+			B.box(M.ashM2, .15, .12, .19, -.01, .13, 0, b); B.box(M.ashM2, .05, .2, .2, -.08, .16, 0, b)
+			B.box(M.dark, .13, .07, .13, -.01, .36, 0, b); B.box(M.dark, .06, .05, .13, -.06, .4, 0, b); B.box(M.arcF, .015, .02, .1, .055, .325, 0, b)
+			B.box(M.orange, .1, .04, .19, .0, .27, 0, b); B.box(M.orange, .08, .1, .03, -.07, .22, .09, b, Vector3(0, 0, .4))
+			B.box(M.dark, .3, .04, .04, .12, .22, .08, b); B.cyl(M.arc, .025, .025, .07, 6, .2, .22, .08, b, Vector3(0, 0, PI / 2)); B.box(M.ashM, .06, .07, .05, .03, .2, .08, b)
+			B.flash_mesh(b, .3, .22, .08, .08, M.arcF)
+		"harrow":
+			# marksman officer: olive cape, brass-trimmed beret, long rail rifle with a scope
+			b.scale = Vector3.ONE * 1.95
+			B.box(M.olive2, .05, .22, .22, -.085, .19, 0, b); B.box(M.olive, .14, .05, .2, -.01, .29, 0, b)
+			B.box(tm.dk, .14, .035, .14, -.01, .38, 0, b); B.box(M.gold, .02, .03, .02, .05, .385, -.04, b); B.box(M.gold, .03, .025, .17, -.01, .265, 0, b)
+			B.box(M.dark, .44, .03, .03, .15, .23, .08, b); B.box(M.metal2, .1, .035, .035, .04, .27, .08, b); B.cyl(M.cyan, .012, .012, .38, 5, .2, .245, .08, b, Vector3(0, 0, PI / 2))
+			B.flash_mesh(b, .4, .23, .08, .07, M.glowC)
 		"pyro":
 			B.box(M.dark, .12, .05, .12, 0, .37, 0, b); B.box(M.dark, .03, .03, .05, .065, .32, 0, b); B.cyl(M.orange, .04, .04, .18, 6, -.11, .23, -.04, b); B.cyl(M.orange, .04, .04, .18, 6, -.11, .23, .04, b); B.box(M.dark, .2, .035, .035, .1, .2, .08, b); B.flash_mesh(b, .22, .2, .08, .08, M.fire)
 
@@ -317,8 +332,38 @@ static func unit_model(type: String, team: int, fac: String) -> Node3D:
 		for x in [-L / 2 + .08, L / 2 - .08]:
 			for zz in [z, -z]: B.cyl(M.dark, .06, .06, .15, 6, x, .07, zz, body, Vector3(PI / 2, 0, 0))
 	match type:
-		"rifle", "lancer", "medic", "engineer", "ranger", "pyro":
+		"rifle", "lancer", "medic", "engineer", "ranger", "pyro", "vey", "harrow":
 			infantry(B, body, type)
+		"furnace":
+			# Old Brann's arc tank: a smelter on tracks, twin chimneys, a furnace mouth and an arc horn on top
+			tracks.call(.86, .28, .15)
+			B.box(M.ashM2, .76, .18, .46, 0, .25, 0, body); B.box(tm.col, .78, .05, .48, 0, .35, 0, body); B.box(tm.dk, .16, .14, .48, .39, .24, 0, body)
+			B.box(M.ashM, .4, .2, .34, -.08, .46, 0, body); B.box(M.fire, .02, .08, .18, .125, .44, 0, body); B.box(M.dark, .02, .02, .22, .126, .49, 0, body)
+			for z in [-.11, .11]:
+				B.cyl(M.ashM2, .05, .06, .34, 6, -.24, .62, z, body); B.cyl(M.fire, .04, .04, .02, 6, -.24, .8, z, body)
+			B.cyl(M.metal2, .05, .07, .14, 6, .06, .62, 0, body)
+			for k in 3: B.cyl(tm.col if k % 2 else M.metal, .1 - k * .02, .1 - k * .02, .03, 8, .06, .7 + k * .05, 0, body)
+			var orb := B.solo("orb", body, .06, .86, 0); B.ico(M.arc, 1, 0, 0, 0, orb); orb.scale = Vector3.ONE * .08; B.nshadow[orb] = true
+			B.box(M.gold, .05, .05, .5, .42, .15, 0, body)
+			B.flash_mesh(body, .06, .86, 0, .16, M.arcF)
+		"saint":
+			# Marshal Dace's command tank: long hull, twin long guns, brass trim, a banner pole and command antennas
+			tracks.call(.92, .3, .17)
+			B.box(tm.col, .82, .17, .48, 0, .26, 0, body); B.box(tm.dk, .16, .12, .48, .44, .22, 0, body); B.box(P.metal2, .84, .12, .07, 0, .24, .32, body); B.box(P.metal2, .84, .12, .07, 0, .24, -.32, body)
+			B.box(M.gold, .84, .025, .02, 0, .33, .29, body); B.box(M.gold, .84, .025, .02, 0, .33, -.29, body)
+			var t := B.grp(body, "tur", Vector3(-.08, .35, 0))
+			B.box(tm.col, .42, .16, .38, 0, .08, 0, t); B.prism(tm.dk, .2, .1, .38, -.26, .06, 0, t); B.box(M.gold, .1, .03, .1, -.05, .18, 0, t)
+			for z in [-.08, .08]:
+				B.box(P.metal2, .56, .06, .06, .46, .09, z, t); B.box(M.dark, .08, .09, .09, .74, .09, z, t)
+			B.box(M.dark, .012, .4, .012, -.18, .32, .14, t); B.box(M.dark, .012, .3, .012, -.2, .26, -.14, t)
+			B.box(M.gold, .1, .07, .005, -.13, .46, .14, t); B.box(tm.col, .09, .06, .006, -.13, .45, .14, t)
+			B.flash_mesh(t, .8, .09, 0, .13)
+		"truck":
+			# foundry truck: cab up front, canvas-covered cargo bed
+			for w in [[.26, .17], [-.06, .17], [-.24, .17], [.26, -.17], [-.06, -.17], [-.24, -.17]]: B.cyl(M.tire, .09, .09, .08, 7, w[0], .09, w[1], body, Vector3(PI / 2, 0, 0))
+			B.box(M.dark, .7, .06, .3, 0, .15, 0, body)
+			B.box(tm.col, .2, .2, .3, .25, .27, 0, body); B.box(M.glass, .03, .09, .26, .355, .32, 0, body)
+			B.box(M.sandbag, .44, .24, .32, -.12, .32, 0, body); B.box(tm.dk, .45, .03, .33, -.12, .45, 0, body)
 		"buggy":
 			B.box(tm.col, .5, .1, .3, 0, .17, 0, body); B.box(tm.dk, .52, .04, .32, 0, .11, 0, body); B.box(M.glass, .03, .09, .24, .13, .26, 0, body)
 			for z in [-.13, .13]:

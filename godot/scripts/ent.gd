@@ -71,4 +71,7 @@ var los_t := 0.0
 var los_ok := true
 var los_of: Ent = null
 var dump := 0.0  # aurite delivered in the current unload
+var tag := ""          # mission tag: "vip", "hero", a post tag such as "guns"
+var captive := false   # a prisoner: does nothing, cannot be hurt or selected until a friendly unit reaches it
+var post := false      # holds its position: the AI never pulls it into an attack wave
 var face = null  # Vector2 facing to adopt when the move ends (formation drag)

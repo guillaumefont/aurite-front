@@ -36,6 +36,18 @@ var diff := "normal"
 var delayed: Array = []
 var astar := AStarGrid2D.new()
 var by_id := {}
+# mission state
+var p0 := Vector2i(9, 53)     # player start (tile)
+var e0 = null                 # enemy base (Vector2i) or null
+var theme := "temperate"
+var dusk := false
+var gi := 0                   # current goal
+var g_t0 := 0.0               # when the current goal started
+var gst := {}                 # current goal's progress (held seconds, trucks through, aurite at start)
+var wst := {}                 # wave state of the current wave plan
+var ev_done := {}
+var m_t := 1.0
+var end_why := ""
 
 # ---------------- util ----------------
 static func _u32(v: int) -> int:
@@ -221,8 +233,8 @@ func new_game(d: String, opt: Dictionary) -> void:
 	var M = opt.get("mission", null)
 	mission = M
 	diff = M.diff if M else d
-	seed = M.seed if M else int(Time.get_ticks_msec() % 100000) + randi() % 1000
-	var pf: String = "vanguard" if M else opt.get("fac", "vanguard")
+	seed = M.seed if M else opt.get("seed", int(Time.get_ticks_msec() % 100000) + randi() % 1000)
+	var pf: String = M.fac if M else opt.get("fac", "vanguard")
 	time = 0.0; ents = []; nid = 1; proj = []; parts = []; sel = []; over = false; vis_t = 0.0; ai_t = 2.0
 	last_alert = -99.0; ping = null; stats = {"built": 0, "lost": 0, "killed": 0, "mined": 0}; strikes = []; combat = 0.0; delayed = []; by_id = {}
 	terr = PackedByteArray(); terr.resize(MW * MH)
@@ -236,11 +248,20 @@ func new_game(d: String, opt: Dictionary) -> void:
 		teams.append({"id": id, "credits": float(M.credits[id] if M else D.DIFF[diff].start), "ai": id == 1,
 			"fac": pf if id == 0 else ("ashen" if pf == "vanguard" else "vanguard"), "pmade": 0, "pused": 0, "rally": null,
 			"wave": 5, "waveT": 0, "wn": 0, "prod": prod, "noFundsT": 0.0})
-	gen_map(seed)
+	if D.set_team_colors(teams[0].fac, teams[1].fac): Models.cache.clear()
+	gi = 0; g_t0 = 0.0; gst = {}; wst = {}; ev_done = {}; m_t = 1.0; end_why = ""
+	var A := Vector2i(MW - 1 - D.P0.x, MH - 1 - D.P0.y)
+	if M:
+		p0 = Vector2i(M.map.p0[0], M.map.p0[1])
+		e0 = Vector2i(M.map.e0[0], M.map.e0[1]) if M.map.get("e0", null) != null else null
+		theme = M.map.get("theme", "temperate"); dusk = M.map.get("dusk", false)
+		MapGen.generate(self, M.map, seed, mission_keys(M))
+	else:
+		p0 = D.P0; e0 = A; theme = "temperate"; dusk = false
+		gen_map(seed)
 	gen_heights(seed)
 	init_astar()
-	var A := Vector2i(MW - 1 - D.P0.x, MH - 1 - D.P0.y)
-	if M: mission_setup(M, A)
+	if M: mission_setup(M)
 	else:
 		for pair in [[0, D.P0], [1, A]]:
 			var tm: int = pair[0]; var p: Vector2i = pair[1]
@@ -248,21 +269,85 @@ func new_game(d: String, opt: Dictionary) -> void:
 			var dir := 1 if tm == 0 else -1
 			for k in 3: spawn_unit(tm, "rifle", (p.x + dir * (2 + k)) * T + 16, (p.y - dir * 3) * T + 16)
 			spawn_unit(tm, D.FACS[teams[tm].fac].lv, (p.x + dir * 3) * T + 16, (p.y - dir * 2) * T + 16)
-	teams[1].rally = Vector2((A.x - 6) * T, (A.y + 6) * T)
+	var er: Vector2i = e0 if e0 != null else Vector2i(MW - 1 - p0.x, MH - 1 - p0.y)
+	teams[1].rally = Vector2((er.x - 6) * T, (er.y + 6) * T)
 	update_vision()
 	for e in ents:
 		if e.kind == "b" and e.team == 0: e.born = -9.0
 
-func mission_setup(M: Dictionary, A: Vector2i) -> void:
-	add_building(0, "hq", D.P0.x - 1, D.P0.y - 1)
-	if M.pbase.size(): prebuild(0, M.pbase)
-	if M.punits.size(): squad(0, M.punits, D.P0.x + 3, D.P0.y - 3)
-	add_building(1, M.ehq, A.x - 1, A.y - 1)
-	if M.ebase.size(): prebuild(1, M.ebase)
-	if M.eunits.size(): squad(1, M.eunits, A.x - 3, A.y + 3)
-	if M.riftCh > 0:
+## Tiles that must be open ground and reachable: objectives, posts, captives, spawn points.
+func mission_keys(M: Dictionary) -> Array:
+	var k: Array = []
+	for g in M.goals:
+		if g.at != null: k.append([g.at[0], g.at[1], g.r + 0.5])
+		if g.zone != null: k.append([g.zone[0], g.zone[1], 2.5])
+		for z in g.zones: k.append([z[0], z[1], g.r + 0.5])
+		if g.waves != null:
+			for f in g.waves.from: k.append([f[0], f[1], 2.0])
+		if g.done != null:
+			if g.done.has("base"): k.append([g.done.base[0], g.done.base[1], 5.0])
+			for sp in g.done.get("spawn", []): k.append([sp.at[0], sp.at[1], 2.0])
+	for p in M.posts: k.append([p.at[0], p.at[1], 3.5])
+	for c in M.captives: k.append([c.at[0], c.at[1], 2.5])
+	for ev in M.events:
+		for sp in ev.get("spawn", []): k.append([sp.at[0], sp.at[1], 2.0])
+	return k
+
+func mission_setup(M: Dictionary) -> void:
+	if M.phq:
+		add_building(0, "hq", p0.x - 1, p0.y - 1)
+		if M.pbase.size(): prebuild(0, M.pbase)
+	var c := p0 + (Vector2i(3, -3) if M.phq else Vector2i.ZERO)
+	for h in M.pheroes:
+		for u in squad(0, [[h, 1]], c.x, c.y): u.tag = "hero"
+	if M.punits.size(): squad(0, M.punits, c.x, c.y)
+	for u in squad(0, M.pvip, c.x, c.y): u.tag = "vip"
+	if e0 != null and M.ehq != "":
+		add_building(1, M.ehq, e0.x - 1, e0.y - 1)
+		if M.ebase.size(): prebuild(1, M.ebase)
+	if e0 != null:
+		var ec: Vector2i = e0 + Vector2i(-3, 3)
+		for h in M.eheroes:
+			for u in squad(1, [[h, 1]], ec.x, ec.y): u.tag = "hero"
+		if M.eunits.size(): squad(1, M.eunits, ec.x, ec.y)
+	for pst in M.posts:
+		var tm: int = pst.get("team", 1)
+		for t in pst.get("b", []):
+			var b := place_near(tm, t, pst.at[0], pst.at[1])
+			if b != null:
+				b.tag = pst.get("tag", ""); b.born = -9.0
+		for u in squad(tm, pst.get("u", []), pst.at[0], pst.at[1]):
+			u.post = true
+			u.guard = Vector2(u.x, u.y)
+	for cp in M.captives:
+		for u in squad(0, cp.u, cp.at[0], cp.at[1]):
+			u.captive = true; u.tag = "captive"; u.ang = randf() * TAU
+	if M.swCh > 0:
 		for e in ents:
-			if e.type == "rift": e.ch = M.riftCh
+			if e.team == 1 and e.kind == "b" and e.d.sw: e.ch = M.swCh
+	calc_power()
+
+## Puts a building on free open ground as close as possible to a tile (enemy posts, mission bases).
+func place_near(team: int, type: String, cx: int, cy: int) -> Ent:
+	var d: Dictionary = D.BLD[type]; var best = null; var bs := 1e9
+	for ty in range(cy - 7, cy + 8):
+		for tx in range(cx - 7, cx + 8):
+			var ok := true
+			for y in range(ty - 1, ty + d.h + 1):
+				for x in range(tx - 1, tx + d.w + 1):
+					var inside: bool = x >= tx and x < tx + d.w and y >= ty and y < ty + d.h
+					if not inb(x, y):
+						if inside: ok = false
+						continue
+					var i := y * MW + x
+					if bmap[i]: ok = false
+					elif inside and (terr[i] >= D.ROCK or ore[i] > 0): ok = false
+				if not ok: break
+			if not ok: continue
+			var sc := Vector2(tx + d.w / 2.0 - cx, ty + d.h / 2.0 - cy).length() + randf() * 0.5
+			if sc < bs: bs = sc; best = Vector2i(tx, ty)
+	if best == null: return null
+	return add_building(team, type, best.x, best.y)
 
 func find_hq(team: int) -> Ent:
 	for e in ents:
@@ -282,12 +367,14 @@ func prebuild(team: int, list: Array) -> void:
 			b.born = -9.0
 		if team == 0: update_vision()
 
-func squad(team: int, list: Array, cx: int, cy: int) -> void:
+func squad(team: int, list: Array, cx: int, cy: int) -> Array:
+	var out: Array = []
 	for pair in list:
 		for k in pair[1]:
 			var sl := slots_around(cx, cy, 12 + k)
 			var p: Vector2i = sl[randi() % sl.size()] if sl.size() else Vector2i(cx, cy)
-			spawn_unit(team, pair[0], p.x * T + 16, p.y * T + 16)
+			out.append(spawn_unit(team, pair[0], p.x * T + 16, p.y * T + 16))
+	return out
 
 # ---------------- entities ----------------
 func add_building(team: int, type: String, tx: int, ty: int) -> Ent:
@@ -615,7 +702,7 @@ func find_target(src: Ent, rng: float) -> Ent:
 	var sd: Dictionary = src.d
 	var bld_src := src.kind == "b"
 	for o in ents:
-		if not o.alive or o.team == src.team: continue
+		if not o.alive or o.team == src.team or o.captive: continue
 		if src.team == 0 and not visible_to_player(o): continue
 		if not can_hit(sd, o): continue
 		var dd := dist_to_ent(src.x, src.y, o)
@@ -642,8 +729,8 @@ func fire(s: Ent, t: Ent, d: Dictionary) -> void:
 	var hs := muzzle_h(s); var htg := aim_h(t)
 	if t.team == 0 or s.team == 0: combat = min(1.0, combat + 0.04)
 	var w: String = d.weapon
-	if w == "bullet" or w == "snipe":
-		var sn := w == "snipe"
+	if w == "bullet" or w == "snipe" or w == "rail":
+		var sn := w != "bullet"
 		parts.append({"k": "tracer", "x": mx, "y": my, "x2": t.x + ox + (randf() - 0.5) * 6, "y2": t.y + oy + (randf() - 0.5) * 6, "life": 0.18 if sn else 0.07, "max": 0.18 if sn else 0.07, "ha": h_at(mx, my) + hs, "hb": h_at(t.x, t.y) + htg, "c": 1 if sn else 0})
 		parts.append({"k": "spark", "x": t.x + ox, "y": t.y + oy, "vx": (randf() - 0.5) * 60, "vy": (randf() - 0.5) * 60, "life": 0.15, "max": 0.15, "c": Color("#ffe7a0"), "s": 1.5, "h0": h_at(t.x, t.y) + htg})
 		host.sfx("snipe" if sn else "gun", s.x, s.y)
@@ -681,7 +768,7 @@ func fire(s: Ent, t: Ent, d: Dictionary) -> void:
 		p.apex = ballistic_apex(p) if arty else 0.0
 		p.h = p.y0
 		proj.append(p)
-		host.sfx("mortar" if arty else ("heavy" if (s.type == "bulwark" or s.type == "bastion") else w), s.x, s.y)
+		host.sfx("mortar" if arty else ("heavy" if (s.type == "bulwark" or s.type == "bastion" or s.type == "saint") else w), s.x, s.y)
 
 ## A real lob: the apex is high enough for the shell to clear every hill on the way.
 func ballistic_apex(p: Dictionary) -> float:
@@ -697,7 +784,7 @@ func ballistic_apex(p: Dictionary) -> float:
 	return apex
 
 func damage(t: Ent, dmg: float, w: String, src) -> void:
-	if not t.alive: return
+	if not t.alive or t.captive: return
 	var arm: String = "bld" if t.kind == "b" else t.d.armor
 	t.hp -= dmg * D.MOD[w][arm]; t.hit_t = 3.0
 	if t.team == 0: combat = min(1.0, combat + 0.05)
@@ -711,6 +798,10 @@ func damage(t: Ent, dmg: float, w: String, src) -> void:
 
 func kill(e: Ent) -> void:
 	e.alive = false; e.sel = false
+	if e.kind == "u" and e.d.hero:
+		host.toast(e.d.name + (" is down!" if e.team == 0 else " destroyed"), "warn" if e.team == 0 else "gold"); host.sfx("alert" if e.team == 0 else "ready")
+	elif e.tag == "vip" and e.team == 0:
+		host.toast(e.d.name + " lost", "warn")
 	if e.team == 0: stats.lost += 1
 	else: stats.killed += 1
 	if e.kind == "b":
@@ -788,6 +879,9 @@ func upd_unit(u: Ent, dt: float) -> void:
 	u.cd -= dt
 	if u.flash > 0: u.flash -= dt
 	if u.hit_t > 0: u.hit_t -= dt
+	if u.captive:
+		u.moving = false; return
+	if d.hero and u.hp < u.max_hp and u.hit_t <= 0: u.hp = min(u.max_hp, u.hp + u.max_hp * 0.02 * dt)
 	if d.harv:
 		upd_harv(u, dt); u.moving = move_unit(u, dt); return
 	if d.heal: upd_medic(u, dt); return
@@ -1068,7 +1162,7 @@ func upd_strikes(dt: float) -> void:
 				var x: float = s.x + cos(a) * r; var y: float = s.y + sin(a) * r
 				s.hit += 1; explode(x, y, 26); host.add_scorch(x, y, T * 1.2); sw_damage(x, y, T * 1.8, 260); host.sfx("bigboom", x, y)
 			if s.t < 2.4 and randf() < 0.5:
-				parts.append({"k": "missile", "x": s.x + (randf() - 0.5) * T * 4, "y": s.y + (randf() - 0.5) * T * 4, "h": 14.0, "vh": -6.0, "life": 2.2 - s.t, "max": 2.2})
+				parts.append({"k": "missile", "x": s.x + (randf() - 0.5) * T * 4, "y": s.y + (randf() - 0.5) * T * 4, "h": 14.0, "vh": -6.0, "vx": 0.0, "vy": 0.0, "life": 2.2 - s.t, "max": 2.2})
 		else:
 			if s.t < 3: parts.append({"k": "rift", "x": s.x, "y": s.y, "life": 0.4, "max": 0.4, "f": s.t / 3.0})
 			if s.t >= 3 and not s.hit:
@@ -1341,12 +1435,11 @@ func ai_think(tm: Dictionary) -> void:
 					if p.alive and p.team != id and Vector2(p.x - o.x, p.y - o.y).length() < T * 3: sc += 3 if p.kind == "b" else 1
 				if sc > bs: bs = sc; best = o
 			if best != null: launch_sw(b, best.x, best.y)
-	if M and M.waves != null: mission_waves(tm, M)
-	var army := ents.filter(func(e): return e.alive and e.team == id and e.kind == "u" and not e.d.harv and not e.d.eng)
+	var army := ents.filter(func(e): return e.alive and e.team == id and e.kind == "u" and not e.d.harv and not e.d.eng and not e.post and not (M and e.d.hero))
 	var idle := army.filter(func(u): return u.order == "none" and u.target == null)
 	var intr: Ent = null
 	for e in ents:
-		if not e.alive or e.team == id or e.kind != "u": continue
+		if not e.alive or e.team == id or e.kind != "u" or e.captive: continue
 		if Vector2(e.x - hq.x, e.y - hq.y).length() < 13 * T: intr = e; break
 	if intr != null:
 		for u in idle:
@@ -1357,26 +1450,11 @@ func ai_think(tm: Dictionary) -> void:
 	if time > first and idle.size() >= tm.wave:
 		var tgt: Ent = null; var bd := 1e9
 		for e in ents:
-			if not e.alive or e.team == id: continue
+			if not e.alive or e.team == id or e.captive: continue
 			var dd := Vector2(e.x - hq.x, e.y - hq.y).length() + (T * 8 if e.kind == "u" else 0)
 			if dd < bd: bd = dd; tgt = e
 		if tgt != null:
 			group_move(idle, tgt.x, tgt.y, "amove"); tm.wave = mini(tm.wave + 2, 16)
-
-func mission_waves(tm: Dictionary, M: Dictionary) -> void:
-	var W: Dictionary = M.waves
-	tm.waveT += 1
-	if time < W.first or tm.waveT < W.every: return
-	tm.waveT = 0; tm.wn += 1
-	var A := Vector2i(MW - 1 - D.P0.x, MH - 1 - D.P0.y); var us: Array = []
-	for pair in D.wave_list(tm.wn):
-		for k in pair[1]:
-			var sl := slots_around(A.x - 4, A.y + 4, 24)
-			var p: Vector2i = sl[randi() % sl.size()] if sl.size() else A
-			us.append(spawn_unit(1, pair[0], p.x * T + 16, p.y * T + 16))
-	var hq := find_hq(0)
-	if hq != null: group_move(us, hq.x, hq.y, "amove")
-	host.toast("Enemy wave %d incoming" % tm.wn, "warn"); host.sfx("alert")
 
 func ai_spot(id: int, type: String, hq: Ent):
 	var d: Dictionary = D.BLD[type]; var best = null; var bs := 1e9
@@ -1400,43 +1478,275 @@ func ai_spot(id: int, type: String, hq: Ent):
 			if s < bs: bs = s; best = Vector2i(tx, ty)
 	return best
 
+# ---------------- campaign goals, events, waves ----------------
+func goal():
+	return mission.goals[gi] if mission and gi < mission.goals.size() else null
+
+func _hero_alive(team: int) -> Ent:
+	for e in ents:
+		if e.alive and e.team == team and e.kind == "u" and e.d.hero and not e.captive: return e
+	return null
+
+## Where enemy reinforcements head when nothing else is named: the Command Yard, else a hero, else any unit.
+func _player_focus(from: Vector2) -> Vector2:
+	var hq := find_hq(0)
+	if hq != null and hq.kind == "b": return Vector2(hq.x, hq.y)
+	var h := _hero_alive(0)
+	if h != null: return Vector2(h.x, h.y)
+	var best = null; var bd := 1e9
+	for e in ents:
+		if e.alive and e.team == 0 and not e.captive:
+			var dd := Vector2(e.x, e.y).distance_to(from)
+			if dd < bd: bd = dd; best = Vector2(e.x, e.y)
+	return best if best != null else Vector2(p0.x * T, p0.y * T)
+
+func _nearest(team: int, from: Vector2, f: Callable) -> Ent:
+	var best: Ent = null; var bd := 1e9
+	for e in ents:
+		if e.alive and e.team == team and not e.captive and f.call(e):
+			var dd := Vector2(e.x, e.y).distance_to(from)
+			if dd < bd: bd = dd; best = e
+	return best
+
+## Sends a fresh group somewhere: a unit to hunt ("harv", "vip", "hero", "comms"), a tile, or the player's base.
+func send_group(us: Array, go) -> void:
+	if us.is_empty(): return
+	var from := Vector2(us[0].x, us[0].y)
+	var tgt: Ent = null
+	if go is String:
+		match go:
+			"harv": tgt = _nearest(0, from, func(e): return e.kind == "u" and e.d.harv)
+			"vip": tgt = _nearest(0, from, func(e): return e.tag == "vip")
+			"hero": tgt = _nearest(0, from, func(e): return e.kind == "u" and e.d.hero)
+			"comms": tgt = _nearest(0, from, func(e): return e.type == "comms")
+			"none": return
+	var dest: Vector2
+	if go is Array: dest = Vector2(go[0] * T + 16, go[1] * T + 16)
+	elif tgt != null: dest = Vector2(tgt.x, tgt.y)
+	else: dest = _player_focus(from)
+	group_move(us, dest.x, dest.y, "amove")
+	if tgt != null and tgt.kind == "u":
+		attack_order(us.filter(func(u): return u.d.dmg > 0 and can_hit(u.d, tgt)), tgt)
+
+func spawn_group(sp: Dictionary) -> Array:
+	var tm: int = sp.get("team", 1)
+	var us := squad(tm, sp.u, sp.at[0], sp.at[1])
+	if tm == 1: send_group(us, sp.get("go", "base"))
+	return us
+
+func run_event(ev: Dictionary, warn := true) -> void:
+	if ev.has("say"):
+		host.toast(ev.say, "warn" if warn else "gold"); host.sfx("alert" if warn else "ready")
+	for sp in ev.get("spawn", []): spawn_group(sp)
+	if ev.get("attack", "") == "hero":
+		var hs := ents.filter(func(e): return e.alive and e.team == 1 and e.kind == "u" and e.d.hero)
+		if hs.size():
+			var c := Vector2(hs[0].x, hs[0].y)
+			var esc := ents.filter(func(e): return e.alive and e.team == 1 and e.kind == "u" and not e.d.harv and not e.d.eng and not e.post and not e.d.hero and Vector2(e.x, e.y).distance_to(c) < 10 * T)
+			send_group(hs + esc.slice(0, 8), "base")
+	if ev.has("credits") and ev.get("team", 0) == 0: teams[0].credits += ev.credits
+
+func goal_done(g: Dictionary) -> void:
+	var dn = g.done
+	if dn != null:
+		if dn.has("base"):
+			var bp: Vector2i = Vector2i(dn.base[0], dn.base[1])
+			var hq := place_near(0, "hq", bp.x - 1, bp.y - 1)
+			if hq != null:
+				update_vision()
+				prebuild(0, dn.get("pbase", []))
+		if dn.has("credits"): teams[0].credits += dn.credits
+		if dn.has("tech") and mission.tech != null:
+			for t in dn.tech:
+				if not mission.tech.has(t): mission.tech.append(t)
+		for sp in dn.get("spawn", []): spawn_group(sp)
+		if dn.has("say"): host.toast(dn.say, "gold"); host.sfx("ready")
+	gi += 1; g_t0 = time; gst = {}; wst = {}
+	var nx = goal()
+	if nx == null:
+		over = true; host.end_game(true)
+	elif dn == null or not dn.has("say"):
+		host.toast("Objective complete. Next: " + _goal_name(nx), "gold"); host.sfx("ready")
+
+func lose(why: String) -> void:
+	if over: return
+	end_why = why; over = true
+	host.toast(why, "warn"); host.end_game(false)
+
+func _goal_name(g: Dictionary) -> String:
+	match g.k:
+		"reach": return "reach the " + g.label
+		"survive": return g.label
+		"hold": return "hold the " + g.label
+		"escort": return "get them to the " + g.label
+		"rescue": return "free the " + g.label
+		"capture": return "capture the " + g.label
+		"mine": return "deliver aurite"
+	return g.get("verb", "Destroy the").to_lower() + " " + g.label
+
+## The goal's targets: entities with its tag (if any) and of its types (buildings when it names none). team -1: any side.
+func goal_targets(g: Dictionary, team := 1) -> Array:
+	return ents.filter(func(e): return e.alive and (team < 0 or e.team == team) and not e.captive and (g.tag == "" or e.tag == g.tag) and (g.types.has(e.type) if g.types.size() else e.kind == "b"))
+
+## Who stands in a zone: 0 the player, 1 the enemy, -1 nobody, 2 contested.
+func zone_owner(z: Array, r: float) -> int:
+	var p := false; var en := false
+	var c := Vector2(z[0] * T + 16, z[1] * T + 16)
+	for e in ents:
+		if not e.alive or e.kind != "u" or e.captive or e.d.harv: continue
+		if Vector2(e.x, e.y).distance_to(c) <= r * T:
+			if e.team == 0: p = true
+			else: en = true
+	if p and en: return 2
+	return 0 if p else (1 if en else -1)
+
+func _in_zone(e: Ent, at: Array, r: float) -> bool:
+	return Vector2(e.x, e.y).distance_to(Vector2(at[0] * T + 16, at[1] * T + 16)) <= r * T
+
+func mission_tick() -> void:
+	var M = mission
+	if not M or over: return
+	for i in M.events.size():
+		var ev: Dictionary = M.events[i]
+		if not ev_done.has(i) and time >= ev.t:
+			ev_done[i] = true; run_event(ev)
+	var g = goal()
+	if g == null: return
+	if g.waves != null: do_waves(g.waves, time - g_t0)
+	elif M.waves != null: do_waves(M.waves, time)
+	# prisoners walk free when a friendly unit reaches them
+	for c in ents:
+		if not c.alive or not c.captive: continue
+		for e in ents:
+			if e.alive and e.team == 0 and e.kind == "u" and not e.captive and Vector2(e.x - c.x, e.y - c.y).length() < T * 2.6:
+				c.captive = false; c.tag = "vip"; c.guard = null
+				if not gst.get("freed_msg", false):
+					gst.freed_msg = true; host.toast("Prisoners freed", "gold"); host.sfx("ready")
+				break
+	for t in M.keep:
+		if count(0, t) == 0:
+			lose(("%s has fallen" % D.def_of(t).name) if D.UN.has(t) else ("Your %s was destroyed" % D.def_of(t).name)); return
+	for t in g.protect:
+		if count(0, t) == 0:
+			lose("Your %s was lost" % D.def_of(t).name); return
+	match g.k:
+		"destroy_all":
+			if ents.filter(func(e): return e.alive and e.team == 1 and (e.type != "wall" if e.kind == "b" else not e.d.harv)).is_empty(): goal_done(g)
+		"kill":
+			if goal_targets(g).is_empty(): goal_done(g)
+		"mine":
+			if not gst.has("m0"): gst.m0 = stats.mined
+			if stats.mined - gst.m0 >= g.n: goal_done(g)
+			elif g.t > 0 and time - g_t0 > g.t: lose("Time is up")
+		"survive":
+			if time - g_t0 >= g.t: goal_done(g)
+		"reach":
+			for e in ents:
+				if e.alive and e.team == 0 and e.kind == "u" and not e.captive and (g.who != "hero" or e.d.hero) and _in_zone(e, g.at, g.r):
+					goal_done(g); return
+		"hold":
+			var all_ok := true
+			for z in g.zones:
+				if zone_owner(z, g.r) != 0: all_ok = false
+			if all_ok: gst.held = gst.get("held", 0.0) + 1.0
+			if gst.get("held", 0.0) >= g.t: goal_done(g)
+		"escort":
+			for e in ents:
+				if e.alive and e.team == 0 and e.tag == "vip" and not e.captive and _in_zone(e, g.at, g.r):
+					e.alive = false; e.sel = false; _drop_sel(e)
+					gst.arrived = gst.get("arrived", 0) + 1
+					host.toast("%s is through (%d of %d)" % [e.d.name, gst.arrived, g.need], "gold"); host.sfx("ready")
+			var left := ents.filter(func(e): return e.alive and e.team == 0 and e.tag == "vip").size()
+			if gst.get("arrived", 0) >= g.need: goal_done(g)
+			elif gst.get("arrived", 0) + left < g.need: lose("Too many of them were lost")
+		"rescue":
+			if ents.filter(func(e): return e.alive and e.captive).is_empty(): goal_done(g)
+		"capture":
+			var tg := goal_targets(g, -1)
+			if tg.any(func(e): return e.team == 0): goal_done(g)
+			elif tg.is_empty(): lose("The %s was destroyed" % g.label)
+
+## Wave plan {first, every, n, from, to, list: [[type, base, per wave, from wave]]}; t is seconds since the plan started.
+func do_waves(W: Dictionary, t: float) -> void:
+	var wn: int = wst.get("wn", 0)
+	if wn >= W.get("n", 99) or t < W.first + wn * W.every: return
+	wn += 1; wst.wn = wn
+	var fr: Array = W.from[randi() % W.from.size()]
+	var list: Array = []
+	for row in W.list:
+		if wn < row[3]: continue
+		var n := int(row[1] + row[2] * (wn - row[3]))
+		if n > 0 and avail(1, row[0]): list.append([row[0], n])
+	if list.is_empty(): return
+	var us := squad(1, list, fr[0], fr[1])
+	send_group(us, W.get("to", "base"))
+	host.toast("Enemy wave %d of %d incoming" % [wn, W.get("n", 99)] if W.has("n") else "Enemy wave %d incoming" % wn, "warn"); host.sfx("alert")
+
 func check_end() -> void:
 	if over: return
-	var M = mission
-	if M:
-		var r := ""
-		match M.goal:
-			"mine":
-				if stats.mined >= 5000: r = "win"
-				elif time > 720: r = "lose"
-			"survive":
-				if time >= 540: r = "win"
-			"air":
-				if count(1, "helipad") + count(1, "comms") == 0: r = "win"
-		if r != "":
-			over = true; host.end_game(r == "win"); return
 	var alive := [0, 0]
 	for e in ents:
-		if e.alive and (e.type != "wall" if e.kind == "b" else not e.d.harv): alive[e.team] += 1
+		if e.alive and not e.captive and (e.type != "wall" if e.kind == "b" else not e.d.harv): alive[e.team] += 1
+	if mission:
+		if alive[0] == 0: lose("All your forces are gone")
+		return
 	if alive[0] == 0 or alive[1] == 0:
 		over = true; host.end_game(alive[0] > 0)
 
+func _sw_line() -> String:
+	for e in ents:
+		if e.alive and e.team == 1 and e.kind == "b" and e.d.sw:
+			return "\n%s: %s" % [e.d.name, "ARMED" if e.rdy else D.fmt(e.d.charge - e.ch)]
+	return ""
+
+## Mission HUD text: the current goal with its progress, plus what must not be lost.
 func obj_text() -> String:
 	var M = mission
 	if not M: return ""
-	match M.goal:
+	var g = goal()
+	if g == null: return "Mission complete"
+	var s := ""
+	var step := "" if M.goals.size() < 2 else "(%d/%d) " % [gi + 1, M.goals.size()]
+	match g.k:
 		"destroy_all":
-			var n := ents.filter(func(e): return e.alive and e.team == 1 and not (e.kind == "u" and e.d.harv)).size()
-			return "Destroy the outpost. Enemy forces left: %d" % n
-		"mine": return "Aurite delivered: %s / 5,000 · %s left" % [_thousands(stats.mined), D.fmt(720 - time)]
-		"survive": return "Hold out: %s until reinforcements" % D.fmt(540 - time)
-		"air": return "Enemy Helipads left: %d · Comms Arrays left: %d" % [count(1, "helipad"), count(1, "comms")]
-		"rift":
-			var r: Ent = null
-			for e in ents:
-				if e.alive and e.team == 1 and e.type == "rift": r = e
-			return "Destroy the Ashen Pact" + ((" · Rift Engine: " + ("ARMED" if r.rdy else D.fmt(D.BLD.rift.charge - r.ch))) if r else "")
-	return ""
+			var n := ents.filter(func(e): return e.alive and e.team == 1 and (e.type != "wall" if e.kind == "b" else not e.d.harv)).size()
+			s = "Destroy the %s. Enemy forces left: %d" % [g.label if g.label != "" else "enemy", n]
+		"kill": s = "%s %s · %d left" % [g.get("verb", "Destroy the"), g.label, goal_targets(g).size()]
+		"mine":
+			var m: int = stats.mined - int(gst.get("m0", stats.mined))
+			s = "Aurite delivered: %s / %s" % [_thousands(m), _thousands(g.n)] + (" · %s left" % D.fmt(g.t - (time - g_t0)) if g.t > 0 else "")
+		"survive": s = "%s: %s to go" % [g.label, D.fmt(g.t - (time - g_t0))]
+		"reach": s = "Bring %s to the %s (gold marker)" % ["your hero" if g.who == "hero" else "a unit", g.label]
+		"hold":
+			var own := 0
+			for z in g.zones:
+				if zone_owner(z, g.r) == 0: own += 1
+			s = "Hold all %d %s at once: %d held · %s to go" % [g.zones.size(), g.label, own, D.fmt(g.t - gst.get("held", 0.0))]
+		"escort":
+			var left := ents.filter(func(e): return e.alive and e.team == 0 and e.tag == "vip").size()
+			s = "Get %d to the %s (gold marker): %d through, %d on the way" % [g.need, g.label, gst.get("arrived", 0), left]
+		"rescue":
+			s = "Free the %s: %d still held (marked on the map)" % [g.label, ents.filter(func(e): return e.alive and e.captive).size()]
+		"capture": s = "Capture the %s with an Engineer. Do not destroy it" % g.label
+	s = step + s + _sw_line()
+	var keep: Array = []
+	for t in M.keep:
+		if D.UN.has(t): keep.append(D.UN[t].name)
+	if keep.size(): s += "\nKeep alive: " + ", ".join(keep)
+	return s
+
+## Gold rings the 3D view and the minimap draw: [x, y, radius (tiles), owner (-1 none, 0 you, 1 enemy, 2 contested)].
+func marks() -> Array:
+	var g = goal()
+	if g == null or over: return []
+	var out: Array = []
+	match g.k:
+		"reach", "escort": out.append([g.at[0], g.at[1], g.r, -1])
+		"hold":
+			for z in g.zones: out.append([z[0], z[1], g.r, zone_owner(z, g.r)])
+		"survive":
+			if g.zone != null: out.append([g.zone[0], g.zone[1], 3.0, -1])
+	return out
 
 static func _thousands(n: int) -> String:
 	var s := str(n); var out := ""
@@ -1463,7 +1773,7 @@ func step(dt: float) -> void:
 	if vis_t <= 0: vis_t = 0.2; update_vision()
 	ai_t -= dt
 	if ai_t <= 0:
-		ai_t = 1.0; ai_think(teams[1]); check_end()
+		ai_t = 1.0; ai_think(teams[1]); mission_tick(); check_end()
 	upd_strikes(dt); combat = max(0.0, combat - dt * 0.05)
 	var any_dead := false
 	for e in ents:
