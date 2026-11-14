@@ -534,6 +534,7 @@ func plan_formation(movers: Array, wx: float, wy: float, face = null, width := 0
 	return plan
 
 const STRAGGLE := 8.0
+var formation := true   # off: every unit heads straight for the nearest free tile, no ranks, own speed
 
 func group_move(units: Array, wx: float, wy: float, order: String, face = null, width := 0.0) -> void:
 	if units.is_empty(): return
@@ -542,13 +543,21 @@ func group_move(units: Array, wx: float, wy: float, order: String, face = null, 
 	if order == "amove" and fighters.size():
 		escorts = units.filter(func(u): return u.d.heal > 0 or u.d.eng)
 	var movers := units.filter(func(u): return not escorts.has(u))
-	var plan := plan_formation(movers, wx, wy, face, width)
+	var plan: Array
+	var form: bool = formation or units[0].team != 0   # the toggle is the player's; the AI always forms up
+	if form: plan = plan_formation(movers, wx, wy, face, width)
+	else:
+		plan = []; var used := {}
+		movers.sort_custom(func(a, b): return Vector2(a.x - wx, a.y - wy).length() < Vector2(b.x - wx, b.y - wy).length())
+		for u in movers:
+			var sl = free_tile(wx / T - 0.5, wy / T - 0.5, used, u.d.air)
+			plan.append([u, sl if sl != null else Vector2i(clampi(int(wx / T), 0, MW - 1), clampi(int(wy / T), 0, MH - 1))])
 	for p in plan:
 		var u: Ent = p[0]; var sl: Vector2i = p[1]
 		u.order = order; u.target = null; u.auto = false; u.guard = null; u.face = face
 		if u.d.harv: u.hs = "manual"
 		set_path(u, sl.x, sl.y)
-	if plan.size() > 1:
+	if plan.size() > 1 and form:
 		# shared pace: the main body arrives together (aircraft fly ahead). Units far behind the main
 		# body (STRAGGLE tiles more to travel than the median) don't hold it back: they go at full speed.
 		var ground: Array = []

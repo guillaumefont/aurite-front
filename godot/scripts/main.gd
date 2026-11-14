@@ -31,6 +31,8 @@ var mini_t := 0.0
 var preview_slots: Array = []
 var pv_from = null
 var pv_to = null
+var squad_key := ""   # squad button that made the current selection (lit until the selection changes)
+var squad_set: Array = []
 
 func _ready() -> void:
 	headless = DisplayServer.get_name() == "headless"
@@ -84,6 +86,7 @@ func on_world_changed() -> void:
 	V.refresh_decor()
 
 func on_sel_changed() -> void:
+	if squad_key != "" and S.sel != squad_set: squad_key = ""
 	update_cmd()
 
 func on_vision() -> void:
@@ -325,7 +328,9 @@ func confirm_place() -> void:
 func squad_btn(k: String) -> void:
 	if S.teams.is_empty(): return
 	var a := S.ents.filter(func(e): return e.alive and e.kind == "u" and e.team == 0 and not e.d.harv and not e.d.eng and (k == "all" or ((e.order == "none" and e.target == null) if k == "idle" else e.d.cat == k)))
+	squad_key = k if a.size() else ""; squad_set = a
 	S.set_sel(a)
+	update_cmd()
 	if a.size():
 		sfx("click")
 		var x := 0.0; var y := 0.0; var any_on := false
@@ -334,6 +339,10 @@ func squad_btn(k: String) -> void:
 			if V.on_screen(u.x, u.y): any_on = true
 		if k == "idle" or not any_on: V.center_on(x / a.size(), y / a.size())
 	else: toast("No idle units" if k == "idle" else "No units of that kind")
+
+func toggle_formation() -> void:
+	S.formation = not S.formation; sfx("click"); update_cmd()
+	toast("Formation moves on" if S.formation else "Formation off: units go straight to the spot")
 
 func cmd_btn(k: String) -> void:
 	match k:
@@ -375,6 +384,11 @@ func update_cmd() -> void:
 	U.btn.repair.visible = sb != null; U.btn.sell.visible = sb != null and sb.type != "hq"
 	if sb: U.set_on(U.btn.repair, sb.repairing)
 	U.set_on(U.btn.amove, amove)
+	U.set_on(U.btn.form, S.formation); U.btn.form.text = "FORMATION " + ("ON" if S.formation else "OFF")
+	for k in ["all", "inf", "veh", "air", "idle"]:
+		var lit: bool = squad_key == k
+		U.set_on(U.btn[k], lit)
+		U.btn[k].text = k.to_upper() + (" · %d" % S.sel.size() if lit else "")
 	U.update_mode(box_mode)
 	if S.sel.size():
 		U.selinfo.visible = true

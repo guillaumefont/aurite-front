@@ -34,7 +34,9 @@ var obj_box: PanelContainer
 var toast_box: PanelContainer
 var toast_l: Label
 var toast_t := 0.0
-var cmd_row: HBoxContainer
+var cmd_row: VBoxContainer
+var cmd_top: HBoxContainer
+var cmd_bot: HBoxContainer
 var btn := {}
 var selinfo: Label
 var mode_btn: Button
@@ -140,17 +142,23 @@ func _build_hud() -> void:
 	toast_l = lbl("", f_disp, 13); toast_box.add_child(toast_l); toast_box.visible = false
 	toast_box.anchor_left = 0.5; toast_box.anchor_right = 0.5; toast_box.offset_top = 64; toast_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	hud.add_child(toast_box)
-	cmd_row = HBoxContainer.new(); cmd_row.add_theme_constant_override("separation", 6); cmd_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	cmd_row.anchor_top = 1; cmd_row.anchor_bottom = 1; cmd_row.offset_left = 8; cmd_row.offset_top = -50; cmd_row.offset_bottom = -8
+	# two rows in the bottom-left corner, close to the thumb: unit groups at the bottom, orders above
+	cmd_row = VBoxContainer.new(); cmd_row.add_theme_constant_override("separation", 6); cmd_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cmd_row.anchor_top = 1; cmd_row.anchor_bottom = 1; cmd_row.offset_left = 8; cmd_row.offset_bottom = -8
+	cmd_row.grow_vertical = Control.GROW_DIRECTION_BEGIN; cmd_row.alignment = BoxContainer.ALIGNMENT_END
 	hud.add_child(cmd_row)
+	cmd_top = HBoxContainer.new(); cmd_top.add_theme_constant_override("separation", 6); cmd_top.mouse_filter = Control.MOUSE_FILTER_IGNORE; cmd_row.add_child(cmd_top)
+	cmd_bot = HBoxContainer.new(); cmd_bot.add_theme_constant_override("separation", 6); cmd_bot.mouse_filter = Control.MOUSE_FILTER_IGNORE; cmd_row.add_child(cmd_bot)
+	var fb := mkbtn("Formation", func(): main.toggle_formation(), 128.0, 46.0); cmd_bot.add_child(fb); btn["form"] = fb
+	var gap := Control.new(); gap.custom_minimum_size = Vector2(4, 0); gap.mouse_filter = Control.MOUSE_FILTER_IGNORE; cmd_bot.add_child(gap)
 	for k in ["all", "inf", "veh", "air", "idle"]:
-		var b := mkbtn(k, func(): main.squad_btn(k)); b.add_theme_stylebox_override("normal", sb(Color(0.08, 0.1, 0.12, 0.92), Color("3b4a54")))
-		cmd_row.add_child(b); btn[k] = b
+		var b := mkbtn(k, func(): main.squad_btn(k), 58.0, 46.0); b.add_theme_stylebox_override("normal", sb(Color(0.08, 0.1, 0.12, 0.92), Color("3b4a54")))
+		cmd_bot.add_child(b); btn[k] = b
 	for pair in [["sw", "Launch"], ["amove", "Attack"], ["stop", "Stop"], ["repair", "Repair"], ["sell", "Sell"], ["desel", "✕"]]:
 		var k: String = pair[0]
-		var b := mkbtn(pair[1], func(): main.cmd_btn(k)); cmd_row.add_child(b); btn[k] = b; b.visible = false
+		var b := mkbtn(pair[1], func(): main.cmd_btn(k)); cmd_top.add_child(b); btn[k] = b; b.visible = false
 	set_on(btn.sw, true)
-	selinfo = lbl("", f_body, 12, C_DIM); cmd_row.add_child(selinfo)
+	selinfo = lbl("", f_body, 12, C_DIM); selinfo.size_flags_vertical = Control.SIZE_SHRINK_CENTER; cmd_top.add_child(selinfo)
 	mode_btn = Button.new(); mode_btn.focus_mode = Control.FOCUS_NONE; mode_btn.custom_minimum_size = Vector2(84, 84)
 	mode_btn.anchor_left = 1; mode_btn.anchor_right = 1; mode_btn.anchor_top = 1; mode_btn.anchor_bottom = 1
 	mode_btn.offset_left = -94; mode_btn.offset_right = -10; mode_btn.offset_top = -94; mode_btn.offset_bottom = -10
@@ -160,7 +168,6 @@ func _build_hud() -> void:
 	mode_btn.add_child(mv); mode_btn.set_meta("l1", m1); mode_btn.set_meta("l2", m2)
 	mode_btn.pressed.connect(func(): main.toggle_mode())
 	hud.add_child(mode_btn)
-	cmd_row.offset_right = -100
 	place_bar = HBoxContainer.new(); place_bar.add_theme_constant_override("separation", 8)
 	place_bar.anchor_left = 0.5; place_bar.anchor_right = 0.5; place_bar.anchor_top = 1; place_bar.anchor_bottom = 1
 	place_bar.offset_top = -52; place_bar.offset_bottom = -8; place_bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
