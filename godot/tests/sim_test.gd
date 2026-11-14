@@ -51,6 +51,7 @@ func solve(s, h) -> bool:
 					if e.alive and e.tag == "vip" and not e.captive: e.x = g.at[0] * D.T + 16; e.y = g.at[1] * D.T + 16; e.path = []
 			"rescue":
 				var u = s._hero_alive(0)
+				if u == null: u = s.ents.filter(func(e): return e.alive and e.team == 0 and e.kind == "u")[0]
 				for c in s.ents.filter(func(e): return e.alive and e.captive):
 					u.x = c.x + 20; u.y = c.y; u.path = []
 					s.mission_tick()

@@ -114,6 +114,10 @@ godot --headless tests/sim_test.tscn   # must end with SIM TEST DONE and no SCRI
   (Guillaume, 2026-11-14); `main.camp_open()`.
 - Wave plans spawn the units they name whatever the mission's `aiTech` says (it is often empty). The test jumps to
   each wave of a wave goal and checks enemies really arrive.
+- Heroes are only in some missions (Guillaume, 2026-11-14: not Vey in every mission). Campaign I: Vey in 1, 4, 6, 8
+  (required), The Furnace in 6 to 8. Campaign II: Harrow in 1, 2, 7, 8 (required in 1, 2, 7), Iron Saint in 6 to 8
+  (required only in 8). Other missions are plain army or base missions; keep `heroes`, `pheroes`, `keep` and the
+  "must survive" line in `obj` in step.
 - Campaign difficulty (Easy / Normal / Hard on the briefing, saved as `_level` in `user://campaigns.json`):
   `D.LEVELS` shifts the mission's AI tier (`D.DIFF_ORDER`, Easy can reach `recruit`), scales enemy start credits and
   wave sizes (`Sim.scaled`) and delays or advances the first attack. Balance target: Normal must be beatable on a phone
