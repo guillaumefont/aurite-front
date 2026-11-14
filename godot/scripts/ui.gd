@@ -212,17 +212,18 @@ func _build_hud() -> void:
 	toast_box.anchor_left = 0.5; toast_box.anchor_right = 0.5; toast_box.offset_top = 70; toast_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	hud.add_child(toast_box)
 	# army groups on the left edge: tap selects the group, tap again centres the camera, hold stores the selection
-	groups_box = VBoxContainer.new(); groups_box.add_theme_constant_override("separation", 5); groups_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	groups_box.anchor_top = 0.5; groups_box.anchor_bottom = 0.5; groups_box.offset_left = 8; groups_box.grow_vertical = Control.GROW_DIRECTION_BOTH
-	groups_box.offset_top = -78; groups_box.offset_bottom = 105  # clear of the objective box and the command rows on a phone
+	# pinned under the OBJECTIVE button: at the phone's 1.5x scale the HUD is only ~400 units tall, so 4 x 36 fits above the command rows
+	groups_box = VBoxContainer.new(); groups_box.add_theme_constant_override("separation", 4); groups_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	groups_box.position = Vector2(8, 114)
 	hud.add_child(groups_box)
 	for i in 4:
-		var g := GroupChip.new(); g.ui = self; g.idx = i; g.focus_mode = Control.FOCUS_NONE; g.custom_minimum_size = Vector2(56, 42)
+		var g := GroupChip.new(); g.ui = self; g.idx = i; g.focus_mode = Control.FOCUS_NONE; g.custom_minimum_size = Vector2(58, 36)
 		for st in ["normal", "hover", "pressed", "disabled"]: g.add_theme_stylebox_override(st, StyleBoxEmpty.new())
 		g.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 		g.button_down.connect(func(): g.set_meta("t0", Time.get_ticks_msec()))
 		g.button_up.connect(func(): main.group_btn(i, Time.get_ticks_msec() - int(g.get_meta("t0", 0)) > 500))
 		groups_box.add_child(g); btn["grp%d" % i] = g
+	hud.move_child(obj_box, -1)  # the objective box opens over the group chips for its few seconds
 	# two rows in the bottom-left corner, close to the thumb: unit groups at the bottom, orders above
 	cmd_row = VBoxContainer.new(); cmd_row.add_theme_constant_override("separation", 6); cmd_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	cmd_row.anchor_top = 1; cmd_row.anchor_bottom = 1; cmd_row.offset_left = 8; cmd_row.offset_bottom = -8
@@ -485,10 +486,10 @@ func seg(par: Control, group: String, opts: Array, cur: String, cb: Callable) ->
 	seg_btns[group] = {}
 	for o in opts:
 		var b := Button.new(); b.focus_mode = Control.FOCUS_NONE; b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.custom_minimum_size = Vector2(80, 42)
+		b.custom_minimum_size = Vector2(80, 48)
 		var v := VBoxContainer.new(); v.mouse_filter = Control.MOUSE_FILTER_IGNORE; v.set_anchors_preset(Control.PRESET_FULL_RECT); v.alignment = BoxContainer.ALIGNMENT_CENTER
 		v.offset_left = 6; v.offset_right = -6; v.add_theme_constant_override("separation", 1)
-		var l := lbl(o[1].to_upper(), f_wide, 13, W_KHAKI); l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; v.add_child(l)
+		var l := lbl(o[1].to_upper(), f_wide, 14, W_KHAKI); l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; v.add_child(l)
 		if o.size() > 2:
 			var s := lbl(o[2], f_body, 11, W_SAND); s.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; s.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; v.add_child(s)
 			b.custom_minimum_size.y = 74
@@ -510,44 +511,35 @@ func _build_overlays() -> void:
 	# ---- start: title on the left, orders dossier on the right
 	var c := _overlay("start", 1010, true, true)
 	var bar := HBoxContainer.new(); c.add_child(bar)
-	bar.add_child(eyebrow("Field command  //  Sable valley theatre", W_SAND))
 	var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL; bar.add_child(sp)
 	# build number and self-update status (scripts/updater.gd); tap to check, restart or get the new app
-	var up := Button.new(); up.flat = true; up.focus_mode = Control.FOCUS_NONE; up.add_theme_font_override("font", f_wide); up.add_theme_font_size_override("font_size", 11)
+	var up := Button.new(); up.flat = true; up.focus_mode = Control.FOCUS_NONE; up.add_theme_font_override("font", f_wide); up.add_theme_font_size_override("font_size", 12)
 	up.custom_minimum_size.y = 28; up.pressed.connect(func(): Updater.act()); bar.add_child(up)
 	var upd := func():
 		up.text = Updater.label().to_upper()
 		var col: Color = {"ready": C_AUR, "apk": C_AUR, "downloading": W_SAND, "checking": W_SAND, "offline": C_DIM, "off": C_DIM}.get(Updater.status, W_GREEN)
 		for k in ["font_color", "font_hover_color", "font_pressed_color"]: up.add_theme_color_override(k, col)
 	Updater.changed.connect(upd); upd.call()
+	# two columns that shrink to the screen: the title on the left, the two doors on the right
 	var cols := HBoxContainer.new(); cols.add_theme_constant_override("separation", 28); cols.size_flags_vertical = Control.SIZE_EXPAND_FILL; c.add_child(cols)
-	var lc := VBoxContainer.new(); lc.size_flags_horizontal = Control.SIZE_EXPAND_FILL; lc.size_flags_stretch_ratio = 0.9; lc.add_theme_constant_override("separation", 10); cols.add_child(lc)
-	var ih := HBoxContainer.new(); ih.add_theme_constant_override("separation", 12); lc.add_child(ih)
-	var ins := Insignia.new(); ins.custom_minimum_size = Vector2(54, 54); ih.add_child(ins)
-	var iv := VBoxContainer.new(); iv.alignment = BoxContainer.ALIGNMENT_CENTER; iv.add_theme_constant_override("separation", 0); ih.add_child(iv)
-	iv.add_child(eyebrow("Vanguard  ·  Ashen Pact  ·  Hollow Choir")); iv.add_child(lbl("THE WAR FOR AURITE", f_wide, 11, W_SAND))
+	var lc := VBoxContainer.new(); lc.size_flags_horizontal = Control.SIZE_EXPAND_FILL; lc.size_flags_stretch_ratio = 0.85; lc.add_theme_constant_override("separation", 12); cols.add_child(lc)
+	lc.alignment = BoxContainer.ALIGNMENT_CENTER
+	var ins := Insignia.new(); ins.custom_minimum_size = Vector2(56, 56); ins.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN; lc.add_child(ins)
 	var tl := VBoxContainer.new(); tl.add_theme_constant_override("separation", -16)
 	tl.add_child(title("Aurite", 70)); tl.add_child(lbl("FRONT", f_title, 70, C_ACC)); lc.add_child(tl)
 	var rule := Hazard.new(); rule.stripe = true; rule.custom_minimum_size = Vector2(0, 8); lc.add_child(rule)
-	var lede := lbl("Two armies fight over the aurite fields of the Sable valley. Rise with the Ashen Pact in the first campaign, return with the Vanguard in the second, or pick a side in a skirmish, including the Hollow Choir, who sing to the aurite under the valley.", f_body, 14, Color("cfc6ad"))
-	lede.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; lc.add_child(lede)
-	var lsp := Control.new(); lsp.size_flags_vertical = Control.SIZE_EXPAND_FILL; lc.add_child(lsp)
-	var fm := ghost("Field manual", func(): show_overlay("manual"), 40); fm.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN; fm.custom_minimum_size.x = 170; lc.add_child(fm)
-	# right: the orders dossier, two big doors: the campaign screen and the skirmish screen
-	var rc := VBoxContainer.new(); rc.size_flags_horizontal = Control.SIZE_EXPAND_FILL; cols.add_child(rc)
-	var d := frame(rc, 12)
-	d.get_parent().size_flags_vertical = Control.SIZE_EXPAND_FILL
-	d.add_child(eyebrow("Orders", W_SAND))
-	btn.camp_tile = _tile(d, "Campaign", true, func(): main.show_campaigns())
-	btn.sk_tile = _tile(d, "Skirmish", false, func(): show_overlay("skirmish"))
-	btn.sk_tile.get_meta("l1").text = "Vanguard, Ashen Pact or Hollow Choir against the AI"
-	btn.sk_tile.get_meta("l2").text = "Pick both armies and the enemy's strength"
+	var fm := ghost("Field manual", func(): show_overlay("manual"), 48); fm.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN; fm.custom_minimum_size.x = 190; lc.add_child(fm)
+	var rc := VBoxContainer.new(); rc.size_flags_horizontal = Control.SIZE_EXPAND_FILL; rc.add_theme_constant_override("separation", 14); cols.add_child(rc)
+	rc.alignment = BoxContainer.ALIGNMENT_CENTER
+	btn.camp_tile = _tile(rc, "Campaign", true, func(): main.show_campaigns())
+	btn.sk_tile = _tile(rc, "Skirmish", false, func(): show_overlay("skirmish"))
+	btn.sk_tile.get_meta("l1").text = "PICK YOUR ARMY AND THE ENEMY"
 	# ---- campaigns: chapters stacked in one list that scrolls on its own
 	c = _overlay("campaign", 1010, true, true)
 	var ch := HBoxContainer.new(); ch.add_theme_constant_override("separation", 16); c.add_child(ch)
 	var cb := ghost("Back", func(): main.show_start(), 44); cb.custom_minimum_size.x = 130; ch.add_child(cb)
 	var chv := VBoxContainer.new(); chv.add_theme_constant_override("separation", -4); chv.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ch.add_child(chv)
-	chv.add_child(eyebrow("Field command  //  campaigns", W_SAND)); chv.add_child(title("The war for aurite", 28))
+	chv.alignment = BoxContainer.ALIGNMENT_CENTER; chv.add_child(title("Campaigns", 30))
 	camp_scroll = ScrollContainer.new(); camp_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	camp_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; camp_scroll.custom_minimum_size.y = 100
 	var vsb := camp_scroll.get_v_scroll_bar(); vsb.custom_minimum_size.x = 6
@@ -557,22 +549,20 @@ func _build_overlays() -> void:
 	camp_pane = VBoxContainer.new(); camp_pane.add_theme_constant_override("separation", 10); camp_pane.size_flags_horizontal = Control.SIZE_EXPAND_FILL; camp_scroll.add_child(camp_pane)
 	# ---- skirmish setup
 	c = _overlay("skirmish", 860)
-	var sh := HBoxContainer.new(); sh.add_theme_constant_override("separation", 16); c.add_child(sh)
-	var sb2 := ghost("Back", func(): main.show_start(), 44); sb2.custom_minimum_size.x = 130; sh.add_child(sb2)
-	var shv := VBoxContainer.new(); shv.add_theme_constant_override("separation", -4); sh.add_child(shv)
-	shv.add_child(eyebrow("Field command  //  skirmish", W_SAND)); shv.add_child(title("Skirmish", 28))
 	sk_pane = frame(c, 8)
+	sk_pane.add_child(title("Skirmish", 30))
 	sk_pane.add_child(eyebrow("Choose your army", W_SAND))
-	seg(sk_pane, "fac", [["vanguard", "Vanguard", "Heavy armor, Rangers, Skyhawk gunships, Bastion cannons, Skyfall missiles"], ["ashen", "Ashen Pact", "Fast raiders, Pyros, Wasp drones, Arc weapons, the Rift Engine"],
-		["choir", "Hollow Choir", "Cheap swarms, tunnels, crystal gardens, burrowing sappers, the Cantor"]], "vanguard", func(f): main.sk_fac = f)
+	seg(sk_pane, "fac", [["vanguard", "Vanguard"], ["ashen", "Ashen Pact"], ["choir", "Hollow Choir"]], "vanguard", func(f): main.sk_fac = f)
 	sk_pane.add_child(eyebrow("Enemy army", W_SAND))
 	seg(sk_pane, "enemy", [["random", "Random"], ["vanguard", "Vanguard"], ["ashen", "Ashen"], ["choir", "Choir"]], "random", func(f): main.sk_enemy = f)
 	sk_pane.add_child(eyebrow("Enemy strength", W_SAND))
 	seg(sk_pane, "diff", [["easy", "Easy"], ["normal", "Normal"], ["hard", "Hard"]], "normal", func(dd): main.diff = dd)
-	sk_pane.add_child(cta("Deploy", func(): main.play({"fac": main.sk_fac, "enemy": main.sk_enemy, "diff": main.diff})))
+	var skr := HBoxContainer.new(); skr.add_theme_constant_override("separation", 8); sk_pane.add_child(skr)
+	var dep := cta("Deploy", func(): main.play({"fac": main.sk_fac, "enemy": main.sk_enemy, "diff": main.diff})); dep.size_flags_horizontal = Control.SIZE_EXPAND_FILL; skr.add_child(dep)
+	var sb2 := ghost("Back", func(): main.show_start(), 52); sb2.custom_minimum_size.x = 130; skr.add_child(sb2)
 	# ---- field manual (controls)
 	c = _overlay("manual", 640)
-	d = frame(c, 10)
+	var d := frame(c, 10)
 	d.add_child(eyebrow("Field manual  //  standing orders"))
 	d.add_child(title("Controls", 40))
 	for row in [["TOUCH", "Drag to move the map, pinch to zoom · tap a unit to select it, then tap the ground to move there or an enemy to attack it · tap another of your units to switch to it · hold, then drag to box-select (with units selected, start the hold on one of your units; held on open ground it faces a formation instead) · double-tap a unit to grab every unit of that type on screen · hold and let go, or ✕, to deselect."], ["MOUSE", "Click to select or command, drag to box-select, double-click a unit for all of its type, right-drag to face a formation, middle-drag or WASD to scroll, wheel to zoom."], ["PANEL", "» in the top bar hides the build menu and minimap for a wider view; « BUILD brings them back. While it is hidden, the top bar shows what is in production (tap a ready building to place it). MAP opens a large minimap: tap or drag on it to look there."], ["BUILD", "Tap to order, hold a unit to order five, tap the corner ✕ to cancel one (or long-press a building). Drag a ready building out of the menu and let go where it should stand; it is drawn above your finger."], ["GROUPS", "Select units, then hold 1 to 4 on the left edge to store them. Tap a group to select it, tap again to jump to it. The objective folds away after a few seconds; tap OBJECTIVE to see it again."]]:
@@ -608,27 +598,27 @@ func _build_overlays() -> void:
 	btn.next = cta("Next mission", func(): main.next_mission()); btn.next.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(btn.next)
 	btn.again = cta("Play again", func(): main.play(main.last_opt)); btn.again.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(btn.again)
 	var em := ghost("Main menu", func(): main.show_start(), 52); em.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(em)
-	# ---- briefing dossier
-	c = _overlay("brief", 640)
+	# ---- briefing dossier: story on the left, objectives on the right, then difficulty and the buttons
+	c = _overlay("brief", 940)
 	d = frame(c, 10)
 	var bh := HBoxContainer.new(); d.add_child(bh)
 	var bv := VBoxContainer.new(); bv.size_flags_horizontal = Control.SIZE_EXPAND_FILL; bv.add_theme_constant_override("separation", -4); bh.add_child(bv)
-	btn.br_eye = eyebrow("Mission 1"); bv.add_child(btn.br_eye)
-	btn.br_title = title("Landfall", 48); bv.add_child(btn.br_title)
-	var cl := Stamp.new(); cl.text = "CLASSIFIED"; cl.col = C_ACC; cl.custom_minimum_size = Vector2(170, 60); bh.add_child(cl)
-	btn.br_theatre = lbl("", f_wide, 11, W_SAND); btn.br_theatre.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; d.add_child(btn.br_theatre)
-	btn.br_text = lbl("", f_body, 14, Color("d6cfba")); btn.br_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; d.add_child(btn.br_text)
-	btn.br_heroes = HBoxContainer.new(); btn.br_heroes.add_theme_constant_override("separation", 8); d.add_child(btn.br_heroes)
-	var ob := PanelContainer.new(); ob.add_theme_stylebox_override("panel", _left_bar(W_BRASS)); d.add_child(ob)
-	var obv := VBoxContainer.new(); ob.add_child(obv); obv.add_child(eyebrow("Objectives"))
-	btn.br_obj = lbl("", f_body, 14, W_KHAKI); btn.br_obj.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; obv.add_child(btn.br_obj)
-	var lv := HBoxContainer.new(); lv.add_theme_constant_override("separation", 10); d.add_child(lv)
-	var ll := eyebrow("Difficulty", W_SAND); ll.size_flags_vertical = Control.SIZE_SHRINK_CENTER; lv.add_child(ll)
-	var lsg := seg(lv, "level", [["easy", "Easy"], ["normal", "Normal"], ["hard", "Hard"]], "normal", func(l): main.set_camp_level(l))
-	lsg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn.br_eye = eyebrow("Mission 1"); btn.br_eye.add_theme_font_size_override("font_size", 13); bv.add_child(btn.br_eye)
+	btn.br_title = title("Landfall", 40); bv.add_child(btn.br_title)
+	var cl := Stamp.new(); cl.text = "CLASSIFIED"; cl.col = C_ACC; cl.custom_minimum_size = Vector2(170, 56); bh.add_child(cl)
+	btn.br_theatre = lbl("", f_wide, 11, W_SAND); btn.br_theatre.visible = false; d.add_child(btn.br_theatre)
+	var bc := HBoxContainer.new(); bc.add_theme_constant_override("separation", 16); d.add_child(bc)
+	var bl := VBoxContainer.new(); bl.size_flags_horizontal = Control.SIZE_EXPAND_FILL; bl.add_theme_constant_override("separation", 10); bc.add_child(bl)
+	btn.br_text = lbl("", f_body, 15, Color("d6cfba")); btn.br_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; bl.add_child(btn.br_text)
+	btn.br_heroes = VBoxContainer.new(); btn.br_heroes.add_theme_constant_override("separation", 6); bl.add_child(btn.br_heroes)
+	var ob := PanelContainer.new(); ob.add_theme_stylebox_override("panel", _left_bar(W_BRASS)); ob.size_flags_horizontal = Control.SIZE_EXPAND_FILL; bc.add_child(ob)
+	var obv := VBoxContainer.new(); ob.add_child(obv); var oe := eyebrow("Objectives"); oe.add_theme_font_size_override("font_size", 13); obv.add_child(oe)
+	btn.br_obj = lbl("", f_body, 15, W_KHAKI); btn.br_obj.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; obv.add_child(btn.br_obj)
 	row = HBoxContainer.new(); row.add_theme_constant_override("separation", 8); d.add_child(row)
-	var go := cta("Begin mission", func(): main.begin_mission()); go.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(go)
-	var bk := ghost("Back", func(): main.show_campaigns(), 52); bk.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(bk)
+	var lsg := seg(row, "level", [["easy", "Easy"], ["normal", "Normal"], ["hard", "Hard"]], "normal", func(l): main.set_camp_level(l))
+	lsg.size_flags_horizontal = Control.SIZE_EXPAND_FILL; lsg.size_flags_stretch_ratio = 1.2
+	var go := cta("Begin", func(): main.begin_mission()); go.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(go)
+	var bk := ghost("Back", func(): main.show_campaigns(), 52); bk.custom_minimum_size.x = 110; row.add_child(bk)
 
 ## Boot splash art (AF_MODE=splash renders it to res://splash.png).
 func build_splash() -> void:
@@ -666,13 +656,14 @@ func set_brief_heroes(list: Array, fac: String) -> void:
 		var p := PanelContainer.new(); p.add_theme_stylebox_override("panel", cut(W_OLIVE2, W_BRASS, 1, 7, 7.0)); p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 0); p.add_child(v)
 		var own: bool = D.UN[h].fac == fac
-		v.add_child(lbl(("HERO  //  " if own else "ENEMY HERO  //  ") + D.UN[h].name.to_upper(), f_wide, 11, W_BRASS if own else C_ACC))
-		var t := lbl(HERO_LINES.get(h, ""), f_body, 12, W_SAND); t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; v.add_child(t)
+		v.add_child(lbl(("HERO  //  " if own else "ENEMY HERO  //  ") + D.UN[h].name.to_upper(), f_wide, 13, W_BRASS if own else C_ACC))
+		var t := lbl(HERO_LINES.get(h, ""), f_body, 14, W_SAND); t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; v.add_child(t)
 		btn.br_heroes.add_child(p)
 
 ## A big two-line door on the start screen (red for the main action).
 func _tile(par: Control, t: String, main_action: bool, cb: Callable) -> Button:
-	var b := Button.new(); b.focus_mode = Control.FOCUS_NONE; b.custom_minimum_size = Vector2(0, 104); b.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var b := Button.new(); b.focus_mode = Control.FOCUS_NONE; b.custom_minimum_size = Vector2(0, 96); b.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	b.size_flags_stretch_ratio = 1.0; b.clip_contents = true
 	var bg := C_ACC.darkened(0.55) if main_action else W_OLIVE2
 	var bd := C_ACC if main_action else W_LINE
 	b.add_theme_stylebox_override("normal", cut(bg, bd, 2 if main_action else 1, 12))
@@ -682,9 +673,10 @@ func _tile(par: Control, t: String, main_action: bool, cb: Callable) -> Button:
 	var h := HBoxContainer.new(); h.set_anchors_preset(Control.PRESET_FULL_RECT); h.offset_left = 20; h.offset_right = -16; h.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var v := VBoxContainer.new(); v.alignment = BoxContainer.ALIGNMENT_CENTER; v.size_flags_horizontal = Control.SIZE_EXPAND_FILL; v.mouse_filter = Control.MOUSE_FILTER_IGNORE; v.add_theme_constant_override("separation", 2); h.add_child(v)
 	v.add_child(lbl(t.to_upper(), f_title, 30, Color.WHITE if main_action else W_KHAKI))
-	var l1 := lbl("", f_wide, 12, W_BRASS if main_action else W_SAND); v.add_child(l1)
-	var l2 := lbl("", f_body, 12, W_SAND); v.add_child(l2)
-	var ar := lbl(">>", f_title, 26, Color.WHITE if main_action else W_SAND); ar.size_flags_vertical = Control.SIZE_SHRINK_CENTER; h.add_child(ar)
+	var l1 := lbl("", f_wide, 14, W_BRASS if main_action else W_SAND); v.add_child(l1)
+	l1.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS; l1.clip_text = true; l1.custom_minimum_size.x = 60
+	var l2 := lbl("", f_body, 12, W_SAND); l2.visible = false; v.add_child(l2)
+	var ar := lbl(">>", f_title, 26, Color.WHITE if main_action else W_SAND); ar.size_flags_vertical = Control.SIZE_SHRINK_CENTER; ar.custom_minimum_size.x = 44; h.add_child(ar)
 	b.add_child(h); b.set_meta("l1", l1); b.set_meta("l2", l2)
 	par.add_child(b)
 	return b
@@ -692,6 +684,7 @@ func _tile(par: Control, t: String, main_action: bool, cb: Callable) -> Button:
 ## Start screen campaign door: where the player left off.
 func set_camp_tile(line1: String, line2: String) -> void:
 	btn.camp_tile.get_meta("l1").text = line1.to_upper(); btn.camp_tile.get_meta("l2").text = line2
+	btn.camp_tile.get_meta("l2").visible = false
 
 ## Every campaign as a chapter: a header, then its missions two to a row. rows: [{C, open, done}].
 func render_campaigns(rows: Array, focus_id: String) -> void:
@@ -704,9 +697,7 @@ func render_campaigns(rows: Array, focus_id: String) -> void:
 		var num := lbl(C.num, f_title, 36, C_ACC if op else W_SAND); num.custom_minimum_size.x = 44; num.size_flags_vertical = Control.SIZE_SHRINK_CENTER; hh.add_child(num)
 		var hv := VBoxContainer.new(); hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL; hv.add_theme_constant_override("separation", 0); hh.add_child(hv)
 		hv.add_child(lbl(C.name.to_upper(), f_wide, 18, W_KHAKI))
-		var prev: Dictionary = D.CAMPAIGNS[maxi(0, D.CAMPAIGNS.find(C) - 1)]
-		hv.add_child(lbl(D.FACS[C.fac].name.to_upper() + "  ·  " + ("%d OF %d SECURED" % [mini(done, C.missions.size()), C.missions.size()] if op else "FINISH " + prev.name.to_upper() + " TO OPEN"), f_wide, 11, W_BRASS if op else W_SAND))
-		var tg := lbl(C.tag, f_body, 12, W_SAND); tg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; hv.add_child(tg)
+		hv.add_child(lbl(D.FACS[C.fac].name.to_upper() + "  ·  " + ("%d OF %d SECURED" % [mini(done, C.missions.size()), C.missions.size()] if op else "WIN CAMPAIGN I FIRST"), f_wide, 13, W_BRASS if op else W_SAND))
 		var hs := Stamp.new(); hs.small = true; hs.custom_minimum_size = Vector2(120, 44); hs.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		hs.text = "LOCKED" if not op else ("COMPLETE" if done >= C.missions.size() else ("IN PROGRESS" if done > 0 else "NEW"))
 		hs.col = W_SAND if not op else (W_GREEN if done >= C.missions.size() else W_BRASS)
@@ -733,7 +724,7 @@ func _mission_btn(C: Dictionary, i: int, done: int) -> Button:
 	var n := lbl("%02d" % (i + 1), f_title, 22, C_ACC if nx else W_SAND); n.custom_minimum_size.x = 38; n.size_flags_vertical = Control.SIZE_SHRINK_CENTER; h.add_child(n)
 	var v := VBoxContainer.new(); v.size_flags_horizontal = Control.SIZE_EXPAND_FILL; v.alignment = BoxContainer.ALIGNMENT_CENTER; v.mouse_filter = Control.MOUSE_FILTER_IGNORE; v.add_theme_constant_override("separation", 1)
 	var t := lbl(m.title.to_upper(), f_wide, 14, W_KHAKI); t.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS; t.clip_text = true; v.add_child(t)
-	var tg := lbl(m.tag + "  ·  " + D.THEMES[m.map.theme].name, f_body, 12, W_SAND); tg.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS; tg.clip_text = true; v.add_child(tg)
+	var tg := lbl(m.tag, f_body, 14, W_SAND); tg.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS; tg.clip_text = true; v.add_child(tg)
 	h.add_child(v)
 	var st := Stamp.new(); st.small = true; st.custom_minimum_size = Vector2(98, 38); st.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	st.text = "SECURED" if i < done else ("ORDERS IN" if nx else "CLASSIFIED")
@@ -1335,7 +1326,7 @@ class GroupChip extends Button:
 		var a := 1.0 if n else 0.5
 		UI.ticks(self, size, Color(Color("d9a441"), 0.45 * a), 6.0)
 		var f: Font = ui.f_disp7
-		draw_string(f, Vector2(10, size.y / 2 + 7), str(idx + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color(Color("d8cba3"), a))
+		draw_string(f, Vector2(10, size.y / 2 + 7), str(idx + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 19, Color(Color("d8cba3"), a))
 		if n:
 			draw_string(ui.f_disp, Vector2(28, size.y / 2 - 3), "×%d" % n, HORIZONTAL_ALIGNMENT_LEFT, size.x - 30, 11, Color("d9a441"))
 			for i in mini(n, 5):
