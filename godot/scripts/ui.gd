@@ -51,6 +51,8 @@ var items := {}
 var overlays := {}
 var start_mode := "campaign"
 var camp_pane: VBoxContainer
+var camp_scroll: ScrollContainer
+var press_scroll := 0
 var camp_box: VBoxContainer
 var camp_tag: Label
 var sk_pane: VBoxContainer
@@ -269,19 +271,53 @@ func _wide_fonts() -> void:
 	f_wide = FontVariation.new(); f_wide.base_font = f_disp; f_wide.spacing_glyph = 2
 
 ## full: animated battlefield backdrop; otherwise a dim veil over the paused game.
-func _overlay(nm: String, maxw: float, full := true) -> VBoxContainer:
+## fit: the card fills the screen height instead of scrolling as a whole (its own lists scroll).
+func _overlay(nm: String, maxw: float, full := true, fit := false) -> VBoxContainer:
 	var o := Control.new(); o.name = nm; o.set_anchors_preset(Control.PRESET_FULL_RECT); o.mouse_filter = Control.MOUSE_FILTER_STOP
 	var bg := WarBG.new(); bg.full = full; bg.set_anchors_preset(Control.PRESET_FULL_RECT); bg.mouse_filter = Control.MOUSE_FILTER_IGNORE; o.add_child(bg)
-	var sc := ScrollContainer.new(); sc.set_anchors_preset(Control.PRESET_FULL_RECT); sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; o.add_child(sc)
-	var cc := CenterContainer.new(); cc.size_flags_horizontal = Control.SIZE_EXPAND_FILL; cc.size_flags_vertical = Control.SIZE_EXPAND_FILL; sc.add_child(cc)
 	var mc := MarginContainer.new(); for s in ["left", "right", "top", "bottom"]: mc.add_theme_constant_override("margin_" + s, 16)
-	cc.add_child(mc)
-	var card := VBoxContainer.new(); card.add_theme_constant_override("separation", 12); card.custom_minimum_size.x = maxw
+	var card := VBoxContainer.new(); card.add_theme_constant_override("separation", 12)
+	if fit:
+		mc.set_anchors_preset(Control.PRESET_FULL_RECT); o.add_child(mc)
+		o.resized.connect(func(): _fit_margins(o))
+	else:
+		var sc := ScrollContainer.new(); sc.set_anchors_preset(Control.PRESET_FULL_RECT); sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; o.add_child(sc)
+		var cc := CenterContainer.new(); cc.size_flags_horizontal = Control.SIZE_EXPAND_FILL; cc.size_flags_vertical = Control.SIZE_EXPAND_FILL; sc.add_child(cc)
+		cc.add_child(mc)
+		card.custom_minimum_size.x = maxw
+		o.resized.connect(func(): card.custom_minimum_size.x = minf(maxw, o.size.x - 32 - ins_l - ins_r))
 	mc.add_child(card)
-	o.resized.connect(func(): card.custom_minimum_size.x = minf(maxw, o.size.x - 32))
+	o.set_meta("card", card); o.set_meta("mc", mc); o.set_meta("fit", fit); o.set_meta("maxw", maxw)
 	add_child(o); overlays[nm] = o; o.visible = false
-	o.set_meta("card", card)
 	return card
+
+var ins_l := 0.0
+var ins_t := 0.0
+var ins_r := 0.0
+var ins_b := 0.0
+
+## Safe-area insets in UI units: HUD, side panel content and menu cards move in; backgrounds still bleed.
+func set_insets(l: float, t: float, r: float, b: float) -> void:
+	ins_l = l; ins_t = t; ins_r = r; ins_b = b
+	hud.offset_left = l; hud.offset_top = t; hud.offset_right = -PANEL_W - r; hud.offset_bottom = -b
+	var dr: Control = hud.get_meta("draw")
+	dr.offset_left = -l; dr.offset_top = -t; dr.offset_right = PANEL_W + r; dr.offset_bottom = b
+	panel.offset_left = -PANEL_W - r
+	var ps := sb(C_PANEL, C_LINE, 0, 0, 8)
+	ps.content_margin_right = 8 + r; ps.content_margin_top = 8 + t; ps.content_margin_bottom = 8 + b
+	panel.add_theme_stylebox_override("panel", ps)
+	for k in overlays:
+		var o: Control = overlays[k]; var mc: MarginContainer = o.get_meta("mc")
+		mc.add_theme_constant_override("margin_top", int(16 + t)); mc.add_theme_constant_override("margin_bottom", int(16 + b))
+		if o.get_meta("fit"): _fit_margins(o)
+		else:
+			mc.add_theme_constant_override("margin_left", int(16 + l)); mc.add_theme_constant_override("margin_right", int(16 + r))
+			var card: Control = o.get_meta("card"); card.custom_minimum_size.x = minf(o.get_meta("maxw"), o.size.x - 32 - l - r)
+
+func _fit_margins(o: Control) -> void:
+	var mc: MarginContainer = o.get_meta("mc")
+	var side := maxf(0.0, (o.size.x - 32 - ins_l - ins_r - float(o.get_meta("maxw"))) / 2)
+	mc.add_theme_constant_override("margin_left", int(16 + ins_l + side)); mc.add_theme_constant_override("margin_right", int(16 + ins_r + side))
 
 ## Olive panel with brass corner brackets.
 func frame(par: Control, sep := 10, accent := W_BRASS) -> VBoxContainer:
@@ -343,12 +379,12 @@ func _seg_pick(group: String, val: String) -> void:
 func _build_overlays() -> void:
 	_wide_fonts()
 	# ---- start: title on the left, orders dossier on the right
-	var c := _overlay("start", 1010)
+	var c := _overlay("start", 1010, true, true)
 	var bar := HBoxContainer.new(); c.add_child(bar)
 	bar.add_child(eyebrow("Field command  //  Sable valley theatre", W_SAND))
 	var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL; bar.add_child(sp)
 	bar.add_child(eyebrow("Secure channel", W_GREEN))
-	var cols := HBoxContainer.new(); cols.add_theme_constant_override("separation", 28); c.add_child(cols)
+	var cols := HBoxContainer.new(); cols.add_theme_constant_override("separation", 28); cols.size_flags_vertical = Control.SIZE_EXPAND_FILL; c.add_child(cols)
 	var lc := VBoxContainer.new(); lc.size_flags_horizontal = Control.SIZE_EXPAND_FILL; lc.size_flags_stretch_ratio = 0.9; lc.add_theme_constant_override("separation", 10); cols.add_child(lc)
 	var ih := HBoxContainer.new(); ih.add_theme_constant_override("separation", 12); lc.add_child(ih)
 	var ins := Insignia.new(); ins.custom_minimum_size = Vector2(54, 54); ih.add_child(ins)
@@ -363,13 +399,21 @@ func _build_overlays() -> void:
 	var fm := ghost("Field manual", func(): show_overlay("manual"), 40); fm.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN; fm.custom_minimum_size.x = 170; lc.add_child(fm)
 	var rc := VBoxContainer.new(); rc.size_flags_horizontal = Control.SIZE_EXPAND_FILL; cols.add_child(rc)
 	var d := frame(rc, 10)
+	d.get_parent().size_flags_vertical = Control.SIZE_EXPAND_FILL
 	seg(d, "mode", [["campaign", "Campaign"], ["skirmish", "Skirmish"]], "campaign", func(m): start_mode = m; camp_box.visible = m == "campaign"; sk_pane.visible = m == "skirmish")
-	camp_box = VBoxContainer.new(); camp_box.add_theme_constant_override("separation", 8); d.add_child(camp_box)
+	camp_box = VBoxContainer.new(); camp_box.add_theme_constant_override("separation", 8); camp_box.size_flags_vertical = Control.SIZE_EXPAND_FILL; d.add_child(camp_box)
 	var co: Array = []
 	for C in D.CAMPAIGNS: co.append([C.id, C.num + " · " + C.name, D.FACS[C.fac].name + (" · start here" if C.num == "I" else " · a year later")])
 	seg(camp_box, "camp", co, D.CAMPAIGNS[0].id, func(id): main.pick_campaign(id))
 	camp_tag = lbl("", f_body, 12, W_SAND); camp_tag.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; camp_box.add_child(camp_tag)
-	camp_pane = VBoxContainer.new(); camp_pane.add_theme_constant_override("separation", 5); camp_box.add_child(camp_pane)
+	# the mission list scrolls on its own (drag on phones, wheel on desktop)
+	camp_scroll = ScrollContainer.new(); camp_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	camp_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; camp_scroll.custom_minimum_size.y = 100
+	var vsb := camp_scroll.get_v_scroll_bar(); vsb.custom_minimum_size.x = 6
+	vsb.add_theme_stylebox_override("scroll", cut(Color(W_OLIVE2, 0.6), Color(0, 0, 0, 0), 0, 0, 0))
+	for g in ["grabber", "grabber_highlight", "grabber_pressed"]: vsb.add_theme_stylebox_override(g, cut(W_BRASS if g != "grabber" else Color(W_BRASS, 0.7), Color(0, 0, 0, 0), 0, 0, 0))
+	camp_box.add_child(camp_scroll)
+	camp_pane = VBoxContainer.new(); camp_pane.add_theme_constant_override("separation", 5); camp_pane.size_flags_horizontal = Control.SIZE_EXPAND_FILL; camp_scroll.add_child(camp_pane)
 	sk_pane = VBoxContainer.new(); sk_pane.add_theme_constant_override("separation", 8); sk_pane.visible = false; d.add_child(sk_pane)
 	sk_pane.add_child(eyebrow("Choose your army", W_SAND))
 	seg(sk_pane, "fac", [["vanguard", "Vanguard", "Heavy armor, Rangers, Skyhawk gunships, Bastion cannons, Skyfall missiles"], ["ashen", "Ashen Pact", "Fast raiders, Pyros, Wasp drones, Arc weapons, the Rift Engine"]], "vanguard", func(f): main.sk_fac = f)
@@ -494,8 +538,16 @@ func render_missions(C: Dictionary, done: int) -> void:
 		st.mouse_filter = Control.MOUSE_FILTER_IGNORE; h.add_child(st)
 		if i > done: h.modulate.a = 0.45
 		b.add_child(h)
-		b.pressed.connect(func(): main.open_brief(i))
+		# PASS lets a drag that starts on a mission scroll the list; a press that scrolled is not a tap
+		b.mouse_filter = Control.MOUSE_FILTER_PASS
+		b.button_down.connect(func(): press_scroll = camp_scroll.scroll_vertical)
+		b.pressed.connect(func(): if absi(camp_scroll.scroll_vertical - press_scroll) < 8: main.open_brief(i))
 		camp_pane.add_child(b)
+		if nx: _show_next.call_deferred(b)
+
+func _show_next(b: Control) -> void:
+	await get_tree().process_frame
+	if is_instance_valid(b): camp_scroll.ensure_control_visible(b)
 
 func set_end_stats(rows: Array) -> void:
 	for ch in btn.end_stats.get_children(): ch.queue_free()
@@ -701,9 +753,10 @@ class Insignia extends Control:
 		var sh := PackedVector2Array([Vector2(s.x * 0.5, 0), Vector2(s.x, s.y * 0.14), Vector2(s.x * 0.92, s.y * 0.66), Vector2(s.x * 0.5, s.y), Vector2(s.x * 0.08, s.y * 0.66), Vector2(0, s.y * 0.14)])
 		draw_colored_polygon(sh, Color("21271a"))
 		sh.append(sh[0]); draw_polyline(sh, c, 2.0)
+		# chevrons taper to points and narrow toward the tip, clear of the border
 		for i in 3:
-			var y := s.y * (0.48 + 0.13 * i)
-			draw_polyline(PackedVector2Array([Vector2(s.x * 0.24, y), Vector2(s.x * 0.5, y + s.y * 0.11), Vector2(s.x * 0.76, y)]), k, 3.0)
+			var y := 0.47 + 0.13 * i; var hw: float = [0.27, 0.24, 0.19][i]; var t := 0.075
+			draw_colored_polygon(PackedVector2Array([Vector2(0.5 - hw, y) * s, Vector2(0.5, y + 0.11 - t / 2) * s, Vector2(0.5 + hw, y) * s, Vector2(0.5, y + 0.11 + t / 2) * s]), k)
 		var st := PackedVector2Array(); var cc := Vector2(s.x * 0.5, s.y * 0.27)
 		for i in 10:
 			var a := -PI / 2 + i * PI / 5; var r := s.x * (0.13 if i % 2 == 0 else 0.055)

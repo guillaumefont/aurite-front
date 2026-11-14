@@ -75,9 +75,10 @@ def foreground():
     # inner rule
     inner = [(cx + (x - cx) * 0.86, cy + (y - cy) * 0.86 + N * 0.004) for x, y in shield]
     d.line(inner + [inner[0], inner[1]], fill=hexc('d9a441', 110), width=int(N * 0.006), joint='curve')
+    # chevrons taper to points and narrow toward the tip, clear of the border
     for i in range(3):
-        y = 0.47 + 0.13 * i
-        d.line([P(0.22, y), P(0.5, y + 0.11), P(0.78, y)], fill=hexc('d8cba3'), width=int(N * 0.032), joint='curve')
+        y = 0.47 + 0.13 * i; hw = (0.27, 0.24, 0.19)[i]; t = 0.075
+        d.polygon([P(0.5 - hw, y), P(0.5, y + 0.11 - t / 2), P(0.5 + hw, y), P(0.5, y + 0.11 + t / 2)], fill=hexc('d8cba3'))
     c = P(0.5, 0.25); st = []
     for i in range(10):
         a = -math.pi / 2 + i * math.pi / 5; r = W * (0.17 if i % 2 == 0 else 0.07)

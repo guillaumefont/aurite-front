@@ -63,6 +63,34 @@ func _on_resize() -> void:
 		f = clampf(600.0 / (h_in * 180.0), 1.0, 1.5)
 	if abs(win.content_scale_factor - f) > 0.01:
 		win.content_scale_factor = f
+	_apply_safe()
+
+## Keep buttons and text clear of rounded screen corners and of a camera hole or notch.
+## Uses the display's safe area (it flips sides when the phone turns round), never less than a
+## corner margin on phones. AF_SAFE="left,top,right,bottom" (window pixels) simulates a cutout.
+var safe_last := Rect2()
+var safe_t := 0.0
+func _apply_safe() -> void:
+	var win := get_window()
+	var k := V.ui_scale()
+	if k <= 0: return
+	var l := 0.0; var t := 0.0; var r := 0.0; var b := 0.0
+	var phone := OS.has_feature("mobile") or OS.get_environment("AF_DPI") != ""
+	if OS.get_environment("AF_SAFE") != "":
+		var a := OS.get_environment("AF_SAFE").split(",")
+		l = float(a[0]); t = float(a[1]); r = float(a[2]); b = float(a[3])
+	elif OS.has_feature("mobile"):
+		var sa := DisplayServer.get_display_safe_area()
+		var wr := Rect2i(win.position, win.size)
+		l = sa.position.x - wr.position.x; t = sa.position.y - wr.position.y
+		r = wr.end.x - sa.end.x; b = wr.end.y - sa.end.y
+	var ins := Rect2(maxf(l, 0) / k, maxf(t, 0) / k, maxf(r, 0) / k, maxf(b, 0) / k)
+	if phone:  # rounded corners: a little room on every side, more on the short sides
+		ins = Rect2(maxf(ins.position.x, 24), maxf(ins.position.y, 8), maxf(ins.size.x, 24), maxf(ins.size.y, 8))
+	if ins == safe_last: return
+	safe_last = ins
+	U.set_insets(ins.position.x, ins.position.y, ins.size.x, ins.size.y)
+	V.panel_px = UI.PANEL_W + ins.size.x
 
 # ---------------- host interface for the simulation ----------------
 func toast(msg: String, kind := "") -> void:
@@ -871,6 +899,9 @@ func _process(delta: float) -> void:
 	else:
 		V.update_cam()
 	U.tick(dt)
+	safe_t += dt
+	if safe_t > 0.5:
+		safe_t = 0.0; _apply_safe()
 
 # ---------------- automated screenshot test (AF_SHOT=dir) ----------------
 func _autotest(dir: String) -> void:
@@ -941,6 +972,19 @@ func _menu_shots(dir: String) -> void:
 	await get_tree().create_timer(0.3).timeout
 	await _shot(dir + "/01_skirmish.png")
 	U.seg_btns.mode.campaign.pressed.emit()
+	await get_tree().create_timer(0.2).timeout
+	# drag the mission list: only the list moves, a drag that scrolled does not open a briefing
+	var lr := U.camp_scroll.get_global_rect(); var p0 := lr.get_center() + Vector2(0, lr.size.y * 0.3)
+	var sv0 := U.camp_scroll.scroll_vertical
+	Input.set_emulate_touch_from_mouse(true)  # ScrollContainer only drag-scrolls on touch screens
+	_mouse(p0, true); await get_tree().process_frame
+	for k in 8:
+		_mouse(p0 - Vector2(0, 25 * (k + 1)), true, true); await get_tree().process_frame
+	_mouse(p0 - Vector2(0, 200), false); await get_tree().create_timer(0.4).timeout
+	Input.set_emulate_touch_from_mouse(false)
+	print("MENU list drag scroll ", sv0, " -> ", U.camp_scroll.scroll_vertical, " brief=", U.overlays.brief.visible)
+	await get_tree().create_timer(0.2).timeout
+	await _shot(dir + "/01b_scrolled.png")
 	U.show_overlay("manual")
 	await get_tree().create_timer(0.3).timeout
 	await _shot(dir + "/02_manual.png")
@@ -1045,6 +1089,17 @@ func _shot(path: String) -> void:
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png(path)
 	print("shot ", path)
+
+var mouse_last := Vector2()
+func _mouse(p: Vector2, down: bool, motion := false) -> void:
+	var e: InputEventMouse
+	if motion:
+		e = InputEventMouseMotion.new(); e.button_mask = MOUSE_BUTTON_MASK_LEFT
+		e.relative = (p - mouse_last) * V.ui_scale()
+	else:
+		e = InputEventMouseButton.new(); e.button_index = MOUSE_BUTTON_LEFT; e.pressed = down
+	e.position = p * V.ui_scale(); e.global_position = e.position; mouse_last = p
+	Input.parse_input_event(e)
 
 func _touch(i: int, p: Vector2, down: bool) -> void:
 	var e := InputEventScreenTouch.new(); e.index = i; e.position = p * V.ui_scale(); e.pressed = down

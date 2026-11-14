@@ -84,3 +84,6 @@ godot --headless tests/sim_test.tscn   # must end with SIM TEST DONE and no SCRI
 
 When you learn something a future agent would need (a convention, a gotcha, a check to run), add it here
 in your PR, keep it short, and mention the change in the PR description.
+- Keep buttons and text inside the safe area: `main.gd _apply_safe` feeds `UI.set_insets` from the display safe area
+  (camera hole/notch, either landscape side) with at least 24 UI units at the sides and 8 at top/bottom on phones
+  for rounded corners. Backgrounds still bleed to the edges. Simulate a cutout with `AF_SAFE=left,top,right,bottom` (pixels).
