@@ -1,5 +1,5 @@
-class_name CutscenePlayer
 extends Control
+const Cutscenes := preload("res://scripts/cutscenes.gd")  # no class_name: an installed shell would not know a new global class
 ## Plays a scene from Cutscenes over the live 3D view: letterbox bars, a subtitle line in the bottom bar,
 ## title cards, a place stamp, a Skip button and fades to black. It drives View3D's camera and runs the
 ## scene's actions on the sim; main.gd builds the world first and steps the sim while `active`.

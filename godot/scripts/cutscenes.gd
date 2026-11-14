@@ -1,4 +1,3 @@
-class_name Cutscenes
 extends RefCounted
 ## In-engine cutscenes, as data. CutscenePlayer (cutscene.gd) plays them; main.gd sets the world up.
 ##

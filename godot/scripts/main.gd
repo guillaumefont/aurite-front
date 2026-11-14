@@ -2,6 +2,8 @@ extends Node
 ## Game shell: owns the simulation, the 3D view, the UI and audio; handles input and game flow.
 
 const T := 32
+const Cutscenes := preload("res://scripts/cutscenes.gd")  # no class_name: an installed shell would not know a new global class
+const CutscenePlayer := preload("res://scripts/cutscene.gd")
 
 var S: Sim
 var V: View3D

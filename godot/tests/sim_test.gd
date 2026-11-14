@@ -1,4 +1,5 @@
 extends Node
+const Cutscenes := preload("res://scripts/cutscenes.gd")  # no class_name: an installed shell would not know a new global class
 class Host:
 	var log := []
 	func toast(m, k = ""): log.append(m)

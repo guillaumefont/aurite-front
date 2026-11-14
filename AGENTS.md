@@ -133,6 +133,8 @@ godot --headless tests/sim_test.tscn   # must end with SIM TEST DONE and no SCRI
 - Subtitles: short (the test fails over 64 characters), one per shot, large, in the bottom bar. Speakers in `Cutscenes.WHO`.
 - Check with `AF_SHOT=dir AF_MODE=cine [AF_CINE=id,id] xvfb-run godot --path godot --fixed-fps 20` (one shot per camera cut).
   `cutscene_tests()` in `tests/sim_test.gd` runs every timeline on the sim.
+- New scripts use `preload` constants, not `class_name`: the global class list comes from the installed APK's shell,
+  so a class added in a self-update pack would be unknown on phones (cutscene.gd and cutscenes.gd do this).
 
 ## Audio and UI on phones
 

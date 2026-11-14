@@ -1,5 +1,6 @@
 class_name UI
 extends Control
+const Cutscenes := preload("res://scripts/cutscenes.gd")  # no class_name: an installed shell would not know a new global class
 ## All screen UI, built in code: HUD, side panel, overlays. Game logic lives in main.gd.
 
 const C_BG := Color("0b0f12")
