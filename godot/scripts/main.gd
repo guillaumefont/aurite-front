@@ -14,6 +14,7 @@ var box_mode := false
 var sw_aim := false
 var diff := "normal"
 var sk_fac := "vanguard"
+var sk_enemy := "random"
 var last_opt := {"fac": "vanguard"}
 var cur_tab := "bld"
 var brief_i := 0
@@ -108,7 +109,7 @@ func sfx(n: String, x = null, y = null) -> void:
 		pan = (p.x / r.size.x * 2 - 1) * .8
 		vol = max(.35, 1 - Vector2(p.x / r.size.x - .5, p.y / r.size.y - .5).length() * .9)
 		if not on: vol = .4
-	if n == "ack" and S.teams.size() and S.teams[0].fac == "ashen": n = "ack_ashen"
+	if n == "ack" and S.teams.size() and S.teams[0].fac != "vanguard": n = "ack_" + S.teams[0].fac
 	A.play(n, pan, vol)
 
 func on_world_changed() -> void:
@@ -206,7 +207,7 @@ func new_game(d: String, opt: Dictionary) -> void:
 	if S.mission: toast(S.mission.title, "gold")
 	else:
 		toast("Tap the round button to box-select units", "gold")
-		get_tree().create_timer(3.5).timeout.connect(func(): if S.time < 20 and not S.over: toast("Build a Reactor, then a Refinery", "gold"))
+		get_tree().create_timer(3.5).timeout.connect(func(): if S.time < 20 and not S.over: toast("Build a Reactor, then a " + D.BLD[D.sub(S.teams[0].fac, "refinery")].name, "gold"))
 	A.music_start()
 
 func open_menu() -> void:
@@ -251,7 +252,9 @@ func click_item(cat: String, type: String) -> void:
 	if S.teams.is_empty() or S.over: return
 	var tm: Dictionary = S.teams[0]; var q: Dictionary = tm.prod[cat]; var d: Dictionary = D.def_of(type)
 	if not S.has_req(0, d.req):
-		toast("Requires " + " + ".join(d.req.map(func(r): return D.BLD[r].name)), "warn"); return
+		toast("Requires " + " + ".join(S.req_of(0, d.req).map(func(r): return D.BLD[r].name)), "warn"); return
+	if S.at_limit(0, type):
+		toast(d.name + " is already in the field", "warn"); return
 	if cat == "bld":
 		if q.ready and q.cur == type: start_placing(type); return
 		if q.cur != "":
@@ -285,7 +288,7 @@ func refresh_panel(_force := false) -> void:
 	var tm: Dictionary = S.teams[0]
 	for k in U.items:
 		var it = U.items[k]; var q: Dictionary = tm.prod[it.cat]; var d: Dictionary = D.def_of(it.type)
-		var locked: bool = not S.has_req(0, d.req) or (it.cat != "bld" and S.count(0, D.PRODUCER[it.cat]) == 0)
+		var locked: bool = not S.has_req(0, d.req) or (it.cat != "bld" and S.count(0, D.PRODUCER[it.cat]) == 0) or (d.lim > 0 and S.count(0, it.type) >= d.lim)
 		var n := 0; var prog := 0.0; var ready := false
 		if it.cat == "bld":
 			if q.cur == it.type: prog = q.prog; ready = q.ready
@@ -372,7 +375,7 @@ func confirm_place() -> void:
 # ---------------- commands ----------------
 func squad_btn(k: String) -> void:
 	if S.teams.is_empty(): return
-	var a := S.ents.filter(func(e): return e.alive and e.kind == "u" and e.team == 0 and not e.captive and not e.d.harv and not e.d.eng and (k == "all" or ((e.order == "none" and e.target == null) if k == "idle" else e.d.cat == k)))
+	var a := S.ents.filter(func(e): return e.alive and e.kind == "u" and e.team == 0 and not e.captive and e.intun <= 0 and not e.d.harv and not e.d.eng and (k == "all" or ((e.order == "none" and e.target == null) if k == "idle" else e.d.cat == k)))
 	squad_key = k if a.size() else ""; squad_set = a
 	S.set_sel(a)
 	update_cmd()
@@ -452,7 +455,7 @@ func pick(sx: float, sy: float, wx: float, wy: float) -> Ent:
 	V.update_cam()
 	var best: Ent = null; var bd := 1e9
 	for e in S.ents:
-		if not e.alive or e.kind != "u" or e.captive: continue
+		if not e.alive or e.kind != "u" or e.captive or e.intun > 0: continue
 		if e.team != 0 and not S.visible_to_player(e): continue
 		var h: float = S.h_at(e.x, e.y) + (D.ALT if e.d.air else 0.0)
 		var p := V.w2s(e.x, e.y, h + D.UH[e.type] * .45)
@@ -552,7 +555,7 @@ func box_select(x0: float, y0: float, x1: float, y1: float) -> void:
 	V.update_cam()
 	var r := Rect2(Vector2(min(x0, x1), min(y0, y1)), Vector2(abs(x1 - x0), abs(y1 - y0))).grow(6)
 	var us := S.ents.filter(func(e):
-		if not e.alive or e.kind != "u" or e.team != 0 or e.captive: return false
+		if not e.alive or e.kind != "u" or e.team != 0 or e.captive or e.intun > 0: return false
 		var p := V.w2s(e.x, e.y, S.h_at(e.x, e.y) + .2 + (D.ALT if e.d.air else 0.0))
 		return p.z > 0 and r.has_point(Vector2(p.x, p.y)))
 	var cb := us.filter(func(u): return not u.d.harv)
@@ -926,8 +929,10 @@ func _autotest(dir: String) -> void:
 		begin_mission()
 	elif mode == "b":
 		await _bld_test(dir); get_tree().quit(); return
+	elif mode == "choir":
+		await _choir_shots(dir); get_tree().quit(); return
 	else:
-		play({"fac": "vanguard", "diff": "normal"})
+		play({"fac": OS.get_environment("AF_FAC") if OS.get_environment("AF_FAC") != "" else "vanguard", "enemy": OS.get_environment("AF_ENEMY"), "diff": "normal"})
 	await get_tree().create_timer(1.0).timeout
 	await _shot(dir + "/02_game.png")
 	if OS.get_environment("AF_INPUT") != "":
@@ -1030,9 +1035,8 @@ func _bld_test(dir: String) -> void:
 	paused = true
 	var hq: Ent = S.ents.filter(func(e): return e.team == 0 and e.type == "hq")[0]
 	var bs: Array = []
-	for t in ["power", "refinery", "barracks", "factory", "repair", "helipad", "comms", "tech", "turret", "flak", "bastion", "pylon", "skyfall", "rift"]:
-		var bf: String = D.BLD[t].get("fac", "")
-		if bf != "" and bf != S.teams[0].fac: continue
+	for t in D.ALLB:
+		if t == "wall" or not S.avail(0, t): continue
 		var sp = S.ai_spot(0, t, hq)
 		if sp == null: continue
 		var b := S.add_building(0, t, sp.x, sp.y); b.born = -9.0; bs.append(b)
@@ -1066,6 +1070,7 @@ func _bld_test(dir: String) -> void:
 		S.time += .45
 		await get_tree().create_timer(.3).timeout
 		await _shot(dir + "/die_%d.png" % k)
+	if not S.avail(0, "harv"): return
 	paused = false
 	var hv = null
 	for e in S.ents:
@@ -1084,6 +1089,78 @@ func _bld_test(dir: String) -> void:
 	await get_tree().create_timer(.7).timeout
 	await _shot(dir + "/unload.png")
 	print("BLDTEST done hs=", hv.hs, " parts=", S.parts.size())
+
+## AF_MODE=choir: the Hollow Choir's skirmish pick, buildings, units, a burrowing sapper, shard fields, the Cantor's aura and the Chorus Well.
+func _choir_shots(dir: String) -> void:
+	U.seg_btns.mode.skirmish.pressed.emit(); U.seg_btns.fac.choir.pressed.emit()
+	await get_tree().create_timer(0.3).timeout
+	await _shot(dir + "/c0_skirmish.png")
+	U.seg_btns.mode.campaign.pressed.emit()
+	play({"fac": "choir", "enemy": "vanguard", "diff": "normal", "seed": 4242})
+	paused = true
+	var hq: Ent = S.find_hq(0)
+	var bs: Array = []
+	for t in ["power", "garden", "barracks", "factory", "comms", "tech", "helipad", "spire", "chorus", "garden"]:
+		var sp = S.ai_spot(0, t, hq)
+		if sp == null: continue
+		var b := S.add_building(0, t, sp.x, sp.y); b.born = -9.0; bs.append(b)
+		S.update_vision()
+	var bur := S.add_building(0, "burrow", hq.tx + 3, hq.ty - 7); bur.born = -9.0
+	S.update_vision(); V.fog_clear(true)
+	V.cam_z = 1.1; V.center_on(hq.x + T * 2, hq.y - T * 2)
+	await get_tree().create_timer(.6).timeout
+	await _shot(dir + "/c1_base.png")
+	for b in [hq, bur] + bs.filter(func(e): return ["garden", "spire", "chorus", "factory"].has(e.type)):
+		V.cam_z = 2.4; V.center_on(b.x, b.y)
+		await get_tree().create_timer(.25).timeout
+		await _shot(dir + "/c_b_%s_%d.png" % [b.type, b.id])
+	# the army in a row
+	var row := ["thrall", "thrall", "sapper", "cantor", "lancer", "medic", "skitter", "mantis", "geode", "moth"]
+	var x0: float = (hq.tx + 6) * T; var y0: float = (hq.ty - 14) * T
+	var us: Array = []
+	for i in row.size():
+		var u := S.spawn_unit(0, row[i], x0 + i * T * 1.1, y0); u.ang = PI * .75; us.append(u)
+	V.cam_z = 2.6; V.center_on(x0 + T * 5, y0)
+	await get_tree().create_timer(.4).timeout
+	await _shot(dir + "/c2_units.png")
+	V.cam_z = 3.4; V.center_on(x0 + T * 2.5, y0)
+	await get_tree().create_timer(.3).timeout
+	await _shot(dir + "/c3_units_close.png")
+	V.center_on(x0 + T * 7.5, y0)
+	await get_tree().create_timer(.3).timeout
+	await _shot(dir + "/c3_units_close2.png")
+	# fighting: geode fields and the Cantor's aura against a Vanguard squad
+	var ex: float = x0 + T * 9; var ey: float = y0 - T * 5
+	var foes: Array = []
+	for i in 5:
+		var f := S.spawn_unit(1, "rifle" if i < 3 else "tank", ex + (i % 3) * T, ey + (i / 3) * T)
+		f.hp *= 6; f.max_hp *= 6; foes.append(f)
+	S.update_vision(); paused = false
+	for i in 20 * 6: S.step(.05)
+	V.cam_z = 1.8; V.center_on((x0 + T * 5 + ex) / 2, (y0 + ey) / 2)
+	await get_tree().create_timer(.5).timeout
+	await _shot(dir + "/c4_fight.png")
+	# a sapper burrowing towards the tank
+	var sp: Ent = us[2]
+	S.group_move([sp], ex + T * 6, ey - T * 4, "move")
+	for i in 12: S.step(.05)
+	V.cam_z = 2.6; V.center_on(sp.x, sp.y)
+	await get_tree().create_timer(.3).timeout
+	await _shot(dir + "/c5_sapper.png")
+	# the Chorus Well
+	var ch: Ent = bs.filter(func(e): return e.type == "chorus")[0]
+	S.launch_sw(ch, ex, ey)
+	for i in 20 * 2: S.step(.05)
+	V.cam_z = 1.4; V.center_on(ex, ey)
+	await get_tree().create_timer(.2).timeout
+	await _shot(dir + "/c6_chorus_charge.png")
+	for i in 20 * 1: S.step(.05)
+	await get_tree().create_timer(.3).timeout
+	await _shot(dir + "/c7_chorus_burst.png")
+	for i in 20 * 2: S.step(.05)
+	await get_tree().create_timer(.3).timeout
+	await _shot(dir + "/c8_chorus_field.png")
+	paused = true
 
 func _shot(path: String) -> void:
 	await RenderingServer.frame_post_draw

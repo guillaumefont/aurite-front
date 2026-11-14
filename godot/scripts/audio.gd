@@ -2,8 +2,8 @@ class_name GameAudio
 extends Node
 ## Pre-rendered synth effects (with reverb baked in) and a two-layer march that follows the fighting.
 
-const MINGAP := {"gun": .06, "snipe": .1, "small": .07, "shell": .08, "heavy": .1, "mortar": .12, "rocket": .09, "flak": .1, "flame": .12, "arc": .1, "boom": .1, "bigboom": .15, "click": .03, "ack": .12, "ready": .3, "alert": 1.0, "place": .2, "siren": 2.0}
-const NAMES := ["gun", "snipe", "shell", "heavy", "mortar", "rocket", "flak", "flame", "arc", "small", "boom", "bigboom", "click", "ack", "ack_ashen", "ready", "alert", "place", "siren"]
+const MINGAP := {"gun": .06, "snipe": .1, "small": .07, "shell": .08, "heavy": .1, "mortar": .12, "rocket": .09, "flak": .1, "flame": .12, "arc": .1, "boom": .1, "bigboom": .15, "click": .03, "ack": .12, "ready": .3, "alert": 1.0, "place": .2, "siren": 2.0, "shard": .06, "geode": .12, "burrow": .15}
+const NAMES := ["gun", "snipe", "shell", "heavy", "mortar", "rocket", "flak", "flame", "arc", "small", "boom", "bigboom", "click", "ack", "ack_ashen", "ready", "alert", "place", "siren", "shard", "geode", "burrow", "ack_choir"]
 
 var streams := {}
 var pool: Array = []

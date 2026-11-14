@@ -188,6 +188,21 @@ def sfx(name):
             tn(b, t + k * .36, 560, 560, .14, 'square', .06); tn(b, t + k * .36 + .17, 420, 420, .16, 'square', .06)
     elif name == 'place':
         wet = .25; tn(b, t, 200, 80, .22, 'square', .07); nz(b, t, .3, 'lowpass', 500, .25); nz(b, t + .12, .15, 'bandpass', 1500, .05)
+    elif name == 'shard':
+        # glassy ping: two detuned high sines over a short bright click
+        wet = .35; nz(b, t, .03, 'highpass', 5200, .14); tn(b, t, 2600, 2350, .16, 'sine', .055); tn(b, t, 3920, 3500, .12, 'sine', .03); tn(b, t, 1300, 1200, .1, 'triangle', .03)
+    elif name == 'geode':
+        # a sling thump, then a ringing crystal
+        wet = .4; tn(b, t, 150, 60, .2, 'sine', .4); nz(b, t, .14, 'lowpass', 600, .22, 200)
+        tn(b, t + .03, 1760, 1700, .45, 'sine', .05); tn(b, t + .03, 2640, 2560, .35, 'sine', .03)
+    elif name == 'burrow':
+        # dirt shifting: low rumble and gritty noise
+        wet = .2; nz(b, t, .45, 'lowpass', 420, .3, 140); nz(b, t + .05, .3, 'bandpass', 1100, .08, 600, 1.5); tn(b, t, 70, 45, .35, 'sine', .18)
+    elif name == 'ack_choir':
+        # a soft hummed chord instead of a radio chirp
+        wet = .3
+        for f, v in ((440, .03), (554, .024), (660, .02)):
+            tn(b, t, f, f * 1.01, .22, 'sine', v, .03)
     elif name == 'siren':
         wet = .4
         n = int(2.7 * SR); tt = np.arange(n) / SR
@@ -358,7 +373,8 @@ def reverb_tail(w):
 def main():
     root = sys.argv[1]
     os.makedirs(f'{root}/sfx', exist_ok=True); os.makedirs(f'{root}/music', exist_ok=True)
-    names = ['gun', 'snipe', 'shell', 'heavy', 'mortar', 'rocket', 'flak', 'flame', 'arc', 'small', 'boom', 'bigboom', 'click', 'ack', 'ack_ashen', 'ready', 'alert', 'place', 'siren']
+    names = ['gun', 'snipe', 'shell', 'heavy', 'mortar', 'rocket', 'flak', 'flame', 'arc', 'small', 'boom', 'bigboom', 'click', 'ack', 'ack_ashen', 'ready', 'alert', 'place', 'siren',
+             'shard', 'geode', 'burrow', 'ack_choir']
     peak = 0
     out = {}
     for n in names:
