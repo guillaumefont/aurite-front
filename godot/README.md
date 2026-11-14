@@ -41,4 +41,4 @@ and `debug_keystore` in the editor settings. This APK was signed with the same d
 (`aurite-front-3d/apk/android-wrapper-src.tgz`).
 
 Tests: `godot --headless --path . tests/sim_test.tscn` (AI vs AI soak + every mission's setup). With a display,
-`AF_SHOT=<dir> godot --path .` takes screenshots and `AF_INPUT=1` also replays touch gestures. `AF_MODE=b` shoots every building model and the build, sell, collapse and harvesting animations.
+`AF_SHOT=<dir> godot --path .` takes screenshots and `AF_INPUT=1` also replays touch gestures. `AF_MODE=menus` shoots each menu screen (start, skirmish, field manual, briefing, pause, end) instead. `AF_MODE=b` shoots every building model and the build, sell, collapse and harvesting animations.
