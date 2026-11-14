@@ -64,6 +64,8 @@ const WATER_SHADER := """
 shader_type spatial;
 render_mode diffuse_lambert, specular_schlick_ggx, cull_disabled, depth_draw_opaque;
 uniform sampler2D fog_tex : filter_linear, repeat_disable;
+uniform sampler2D height_tex : filter_linear, repeat_disable;   // terrain height grid (HN x HN), for depth and shore foam
+uniform float hn = 129.0;
 uniform vec4 water_col : source_color = vec4(0.227, 0.525, 0.659, 0.84);
 uniform float glow = 0.0;
 varying vec3 wpos;
@@ -75,11 +77,21 @@ void vertex() {
 void fragment() {
 	NORMAL = normalize(cross(dFdy(VERTEX), dFdx(VERTEX)));
 	float f = texture(fog_tex, wpos.xz / 64.0).r;
-	ALBEDO = water_col.rgb * f * (1.0 - glow * 0.5);
-	EMISSION = water_col.rgb * glow * f * (0.75 + 0.25 * sin(TIME * 1.7 + wpos.x * 0.9 + wpos.z * 0.6));
-	ALPHA = water_col.a;
-	ROUGHNESS = 0.25 + glow * 0.6;
-	SPECULAR = 0.6 * f * (1.0 - glow);
+	// how much water lies over the terrain here: shallows are lighter, with foam at the shore
+	float bed = texture(height_tex, (wpos.xz * 2.0 + 0.5) / hn).r;
+	float depth = clamp(wpos.y - bed, 0.0, 10.0);
+	float deep = smoothstep(0.0, 0.9, depth);
+	float wave = sin(wpos.x * 3.1 + wpos.z * 2.3 + TIME * 1.6) * 0.5 + 0.5;
+	float foam = (1.0 - smoothstep(0.01, 0.06 + wave * 0.05, depth)) * (1.0 - glow);
+	vec3 col = mix(water_col.rgb * 1.35 + vec3(0.04, 0.06, 0.05), water_col.rgb * 0.62, deep);
+	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 4.0);
+	col = mix(col, vec3(0.75, 0.85, 0.9), fres * 0.25 * (1.0 - glow));
+	col = mix(col, vec3(0.92, 0.95, 0.93), foam * 0.6);
+	ALBEDO = col * f * (1.0 - glow * 0.5);
+	EMISSION = water_col.rgb * glow * f * (0.75 + 0.25 * sin(TIME * 1.7 + wpos.x * 0.9 + wpos.z * 0.6)) * (1.0 + glow * (1.0 - deep) * 0.8);
+	ALPHA = mix(mix(0.55, 1.0, deep) * water_col.a + foam * 0.3, 1.0, glow);
+	ROUGHNESS = 0.2 + glow * 0.6 + foam * 0.5;
+	SPECULAR = 0.65 * f * (1.0 - glow) * (1.0 - foam);
 }
 """
 
@@ -95,7 +107,8 @@ func _ready() -> void:
 	sun.shadow_enabled = true
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	sun.shadow_bias = 0.04; sun.shadow_normal_bias = 1.0
-	sun.shadow_blur = 1.0
+	sun.shadow_blur = 1.4
+	sun.directional_shadow_blend_splits = false
 	add_child(sun)
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color("0b0f12")
@@ -107,7 +120,16 @@ func _ready() -> void:
 	env.fog_light_color = Color("0b0f12")
 	env.fog_density = 1.0
 	env.fog_depth_curve = 1.0
-	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+	# filmic tone, a touch more colour and contrast, and bloom only on what really glows (lava, muzzle flashes, lamps)
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC; env.tonemap_exposure = 1.1; env.tonemap_white = 6.0
+	env.adjustment_enabled = true; env.adjustment_saturation = 1.05; env.adjustment_contrast = 1.07
+	env.glow_enabled = true; env.glow_intensity = 0.55; env.glow_strength = 0.9; env.glow_bloom = 0.0
+	env.glow_hdr_threshold = 0.9; env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
+	for i in 7: env.set_glow_level(i, 1.0 if i in [1, 2, 3] else 0.0)
+	RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_LOW)
+	if RenderingServer.get_current_rendering_method() == "gl_compatibility":
+		# the GL fallback already renders darker and more saturated: no extra grading or bloom there
+		env.adjustment_enabled = false; env.glow_enabled = false; env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	var we := WorldEnvironment.new(); we.environment = env; add_child(we)
 	add_child(world); add_child(ents_root); add_child(marks_root)
 	var under := MeshInstance3D.new(); var pm := PlaneMesh.new(); pm.size = Vector2(600, 600); under.mesh = pm
@@ -303,6 +325,8 @@ func build_world() -> void:
 	var wsh := Shader.new(); wsh.code = WATER_SHADER; water_mat = ShaderMaterial.new(); water_mat.shader = wsh; water_mat.set_shader_parameter("fog_tex", fog_tex)
 	var wc: Array = TH.water
 	water_mat.set_shader_parameter("water_col", Color(wc[0], wc[1], wc[2], wc[3])); water_mat.set_shader_parameter("glow", 0.9 if TH.get("lava", false) else 0.0)
+	var himg := Image.create_from_data(HN, HN, false, Image.FORMAT_RF, S.H.to_byte_array())
+	water_mat.set_shader_parameter("height_tex", ImageTexture.create_from_image(himg)); water_mat.set_shader_parameter("hn", float(HN))
 	water.material_override = water_mat; water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	world.add_child(water)
 	# decor
