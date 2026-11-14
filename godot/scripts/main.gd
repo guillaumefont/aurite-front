@@ -286,7 +286,7 @@ func new_game(d: String, opt: Dictionary) -> void:
 	U.obj_box.visible = S.mission != null
 	if S.mission: toast(S.mission.title, "gold")
 	else:
-		toast("Tap the round button to box-select units", "gold")
+		toast("Two fingers move the map · drag one finger to box-select" if PAN_FINGERS == 2 else "Tap the round button to box-select units", "gold")
 		get_tree().create_timer(3.5).timeout.connect(func(): if S.time < 20 and not S.over: toast("Build a Reactor, then a " + D.BLD[D.sub(S.teams[0].fac, "refinery")].name, "gold"))
 	A.music_start()
 
