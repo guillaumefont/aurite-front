@@ -805,6 +805,12 @@ func _autotest(dir: String) -> void:
 	await get_tree().create_timer(2.0).timeout
 	await _shot(dir + "/00_start.png")
 	var mode := OS.get_environment("AF_MODE")
+	if mode == "splash":
+		U.build_splash(); U.show_overlay("splash")
+		await get_tree().create_timer(0.5).timeout
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png("res://splash.png")
+		await _shot(dir + "/splash.png"); get_tree().quit(); return
 	if mode == "menus":
 		await _menu_shots(dir); get_tree().quit(); return
 	if mode.begins_with("m"):
