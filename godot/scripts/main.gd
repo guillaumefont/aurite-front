@@ -192,9 +192,8 @@ func group_btn(i: int, hold: bool) -> void:
 
 func _group_chips() -> void:
 	for i in 4:
-		var n := _group_units(i).size(); var b: Button = U.btn["grp%d" % i]
-		b.text = str(i + 1) + (" · %d" % n if n else "")
-		b.modulate.a = 1.0 if n else 0.55
+		var n := _group_units(i).size(); var b = U.btn["grp%d" % i]
+		if b.n != n: b.n = n; b.queue_redraw()
 
 ## A short vibration on phones to confirm an order or a selection.
 func buzz(ms: int) -> void:
@@ -209,7 +208,9 @@ func toggle_big_map() -> void:
 func _panel_alert() -> void:
 	var ready: bool = not U.panel_open and S.teams.size() > 0 and S.teams[0].prod.bld.ready
 	U.set_on(U.btn.panel, ready)
-	if not U.panel_open: U.btn.panel.text = "« READY" if ready else "« BUILD"
+	if not U.panel_open:
+		var t := "READY" if ready else "BUILD"
+		if U.btn.panel.text != t: U.btn.panel.text = t; U.restyle(U.btn.panel)
 
 # ---------------- host interface for the simulation ----------------
 func toast(msg: String, kind := "") -> void:
@@ -490,8 +491,7 @@ func hud_tick(dt: float) -> void:
 	U.credits_l.text = Sim._thousands(int(shown_cr))
 	U.power_l.text = "%d / %d" % [tm.pmade, tm.pused]
 	var lp := S.low_power(0)
-	U.power_bar.size.x = 84.0 * min(1.0, float(tm.pused) / tm.pmade if tm.pmade else 1.0)
-	U.power_bar.color = UI.C_BAD if lp else UI.C_OK
+	U.power_bar.set_val(min(1.0, float(tm.pused) / tm.pmade if tm.pmade else 1.0), lp)
 	U.power_l.add_theme_color_override("font_color", UI.C_BAD if lp else UI.C_FG)
 	if S.mission:
 		if S.gi != obj_gi: obj_gi = S.gi; obj_t = OBJ_SHOW  # a new goal shows itself again
@@ -978,12 +978,11 @@ func draw_hud(c: Control) -> void:
 		var q := V.w2s(e.x + T, e.y, S.h_at(e.x, e.y) + top); var ppt: float = abs(q.x - p.x)
 		var w: float = max(24.0, e.w * ppt * .85) if is_b else max(18.0, e.r / T * 2 * ppt + 8)
 		var x := p.x - w / 2; var y := p.y - 4; var fr: float = max(0.0, e.hp / e.max_hp)
-		c.draw_rect(Rect2(x - 1, y - 1, w + 2, 5), Color(0, 0, 0, .75))
-		c.draw_rect(Rect2(x, y, w * fr, 3), Color("7fd68e") if fr > .6 else (Color("f0c23f") if fr > .3 else Color("ff5a52")))
+		_hp_bar(c, Rect2(x, y, w, 4 if is_b else 3), fr, D.MINI_COL[e.team] if e.team < D.MINI_COL.size() else Color.WHITE, is_b)
 		if e.kind == "u" and e.d.harv and e.sel:
 			c.draw_rect(Rect2(x - 1, y + 4, w + 2, 4), Color(0, 0, 0, .75)); c.draw_rect(Rect2(x, y + 5, w * e.load / D.HARV_CAP, 2), Color("f0b93f"))
 		if is_b and e.upg >= 0 and (e.team == 0 or e.sel):
-			c.draw_rect(Rect2(x - 1, y + 4, w + 2, 4), Color(0, 0, 0, .75)); c.draw_rect(Rect2(x, y + 5, w * e.upg, 2), Color("f0b93f"))
+			c.draw_rect(Rect2(x - 1, y + 5, w + 2, 4), Color(0, 0, 0, .75)); c.draw_rect(Rect2(x, y + 6, w * e.upg, 2), Color("f0b93f"))
 		if is_b and e.repairing:
 			c.draw_string(U.f_disp7, Vector2(p.x - 5, y - 5 + sin(S.time * 6) * 2), "+", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("7fd68e"))
 	_draw_mission_marks(c)
@@ -1002,10 +1001,31 @@ func draw_hud(c: Control) -> void:
 		c.draw_rect(r, Color(.5, .84, .56, .12)); c.draw_rect(r, Color("7fd68e"), false, 1.5)
 	if gest != null and gest.mode == "lp":
 		c.draw_arc(gest.s, 22, 0, TAU, 32, Color("7fd68e"), 2)
-	var vr := V.view_rect()
-	if sw_aim: c.draw_string(f, Vector2(max(8.0, vr.size.x / 2 - 90), vr.size.y - 64), "SUPERWEAPON: TAP A TARGET", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(.94, .73, .25, .95))
-	elif amove: c.draw_string(f, Vector2(max(8.0, vr.size.x / 2 - 110), vr.size.y - 64), "ATTACK-MOVE: TAP A DESTINATION", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(.9, .28, .25, .95))
-	elif gest != null and gest.mode == "face" and pv_from != null: c.draw_string(f, Vector2(max(8.0, vr.size.x / 2 - 110), vr.size.y - 64), "RELEASE TO FORM UP FACING THIS WAY", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(.5, .84, .56, .95))
+	if sw_aim: _order_banner(c, "launch", "SUPERWEAPON: TAP A TARGET", Color(.94, .73, .25))
+	elif amove: _order_banner(c, "atk", "ATTACK-MOVE: TAP A DESTINATION", Color(.95, .32, .28))
+	elif gest != null and gest.mode == "face" and pv_from != null: _order_banner(c, "form", "RELEASE TO FORM UP FACING THIS WAY", Color(.56, .84, .48))
+
+## Health bar over a unit or building: dark frame, team-coloured cap, fill from green to red, quarter ticks.
+func _hp_bar(c: Control, r: Rect2, fr: float, team: Color, big: bool) -> void:
+	c.draw_rect(r.grow(1.5), Color(0, 0, 0, .78))
+	c.draw_rect(r, Color(0.12, 0.13, 0.1, 0.9))
+	var col := Color("8fcf7a") if fr > .6 else (Color("f0c23f") if fr > .3 else Color("ff5a52"))
+	c.draw_rect(Rect2(r.position, Vector2(r.size.x * fr, r.size.y)), col)
+	c.draw_rect(Rect2(r.position, Vector2(r.size.x * fr, 1)), col.lightened(0.35))
+	if r.size.x >= 30:
+		var n := 8 if big and r.size.x > 70 else 4
+		for i in range(1, n): c.draw_rect(Rect2(r.position.x + r.size.x * i / n, r.position.y, 1, r.size.y), Color(0, 0, 0, .55))
+	c.draw_rect(Rect2(r.position.x - 1.5, r.position.y - 1.5, 3, r.size.y + 3), team)
+
+## A plate centred above the command buttons naming the order the next tap gives.
+func _order_banner(c: Control, g: String, txt: String, col: Color) -> void:
+	var vr := V.view_rect(); var f: Font = U.f_disp
+	var tw := f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+	var w := tw + 52; var r := Rect2(maxf(8.0, vr.size.x / 2 - w / 2), U.cmd_row.get_global_rect().position.y - 42, w, 32)
+	c.draw_style_box(UI.cut(Color(0.055, 0.062, 0.045, 0.9), Color(col, 0.8), 1, 8, 0), r)
+	c.draw_rect(Rect2(r.position.x, r.position.y + 8, 3, r.size.y - 8), col)
+	UI.glyph(c, g, Rect2(r.position.x + 14, r.position.y + 8, 16, 16), col)
+	c.draw_string(f, Vector2(r.position.x + 38, r.position.y + 21), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, col.lightened(0.3))
 
 ## Campaign markers over the 3D view: hero chevrons, prisoners, convoy trucks, targets, objective labels.
 func _draw_mission_marks(c: Control) -> void:

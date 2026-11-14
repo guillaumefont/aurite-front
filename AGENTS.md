@@ -144,3 +144,8 @@ in your PR, keep it short, and mention the change in the PR description.
   `main._prod_chips`), MAP = enlarged minimap (`UI.big_map`, draws the panel minimap's texture), army groups
   (`main.groups`, `group_btn`), objective auto-hide (`obj_t`, `OBJ_SHOW`), drag-to-build from `BuildItem`
   (`drag_build_*`, `GHOST_LIFT`), hold a unit item = queue five, corner ✕ cancels. `AF_INPUT=1` replays all of them.
+- HUD look (2026-11-14, "UI too simple, keep low poly but increase quality"): HUD buttons are `UI.HudBtn` made by `mkbtn(text, cb, w, h, size, glyph)`;
+  `restyle`/`set_on` give them cached chamfered olive plates (`hsb`) with brass ticks. Icons are vector glyphs in `UI.glyph`
+  (aur, pwr, atk, stop, form, inf, veh, air, map, build, repair, sell, up, launch, obj, lock, ...), no image files.
+  Readouts sit on `UI.Plate` (`plate_sb`, optional coloured left bar). Health bars: `main._hp_bar`; order prompts: `main._order_banner`.
+  Keep the group chips (`groups_box`) clear of the objective box and the command rows at `AF_DPI=400` (only ~490 UI units tall).
