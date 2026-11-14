@@ -100,6 +100,7 @@ func end_game(win: bool) -> void:
 	var en: String = D.FACS[S.teams[1].fac].name; var me: String = D.FACS[S.teams[0].fac].name
 	U.btn.end_eye.text = (("Mission %d · %s %s" % [M.idx + 1, M.title, "complete" if win else "failed"]) if M else (en + " eliminated" if win else me + " base lost")).to_upper()
 	U.btn.end_title.text = "VICTORY" if win else "DEFEAT"
+	U.set_end_result(win)
 	if M and win: camp_save(M.idx)
 	U.btn.next.visible = M != null and win and M.idx < D.MISSIONS.size() - 1
 	U.btn.again.text = ("REPLAY" if win else "RETRY") if M else "PLAY AGAIN"
@@ -188,7 +189,7 @@ func toggle_music() -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		if U.overlays.menu.visible: resume()
-		elif U.overlays.brief.visible: show_start()
+		elif U.overlays.brief.visible or U.overlays.manual.visible: show_start()
 		elif S.teams.size() and not S.over and not U.overlays.start.visible: open_menu()
 		return
 	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
@@ -794,6 +795,8 @@ func _autotest(dir: String) -> void:
 	await get_tree().create_timer(2.0).timeout
 	await _shot(dir + "/00_start.png")
 	var mode := OS.get_environment("AF_MODE")
+	if mode == "menus":
+		await _menu_shots(dir); get_tree().quit(); return
 	if mode.begins_with("m"):
 		open_brief(int(mode.substr(1)))
 		await get_tree().create_timer(0.5).timeout
@@ -838,6 +841,28 @@ func _autotest(dir: String) -> void:
 	await _shot(dir + "/06_fight.png")
 	print("AUTOTEST time=", S.time, " over=", S.over, " ents=", S.ents.size())
 	get_tree().quit()
+
+## AF_MODE=menus: one screenshot per menu screen.
+func _menu_shots(dir: String) -> void:
+	U.seg_btns.mode.skirmish.pressed.emit()
+	await get_tree().create_timer(0.3).timeout
+	await _shot(dir + "/01_skirmish.png")
+	U.seg_btns.mode.campaign.pressed.emit()
+	U.show_overlay("manual")
+	await get_tree().create_timer(0.3).timeout
+	await _shot(dir + "/02_manual.png")
+	open_brief(0)
+	await get_tree().create_timer(0.3).timeout
+	await _shot(dir + "/03_brief.png")
+	begin_mission()
+	await get_tree().create_timer(1.0).timeout
+	open_menu()
+	await get_tree().create_timer(0.3).timeout
+	await _shot(dir + "/04_pause.png")
+	resume()
+	S.over = true; end_game(true)
+	await get_tree().create_timer(1.6).timeout
+	await _shot(dir + "/05_end.png")
 
 func _shot(path: String) -> void:
 	await RenderingServer.frame_post_draw

@@ -243,36 +243,74 @@ func set_tab(cat: String) -> void:
 		tabs[c].add_theme_stylebox_override("normal", sb(Color("2e1513") if on else C_PANEL2, C_ACC if on else C_LINE))
 		tabs[c].add_theme_color_override("font_color", C_FG if on else C_DIM)
 
-# ---------------- overlays ----------------
-func _overlay(nm: String, maxw: float) -> VBoxContainer:
+# ---------------- overlays (war-room look) ----------------
+const W_KHAKI := Color("d8cba3")
+const W_SAND := Color("a99c78")
+const W_OLIVE := Color(0.075, 0.086, 0.059, 0.9)
+const W_OLIVE2 := Color("21271a")
+const W_LINE := Color("4a5238")
+const W_BRASS := Color("d9a441")
+const W_SEL := Color("33140f")
+const W_GREEN := Color("8fcf7a")
+
+var f_title: FontVariation
+var f_wide: FontVariation
+
+## Chamfered box: two cut corners, like stencilled military plates.
+static func cut(bg: Color, border := Color(0, 0, 0, 0), bw := 1, c := 9, pad := 8.0) -> StyleBoxFlat:
+	var s := sb(bg, border, bw, 0, pad)
+	s.corner_radius_top_left = c; s.corner_radius_bottom_right = c; s.corner_detail = 1
+	return s
+
+func _wide_fonts() -> void:
+	f_title = FontVariation.new(); f_title.base_font = f_disp7; f_title.spacing_glyph = 4
+	f_wide = FontVariation.new(); f_wide.base_font = f_disp; f_wide.spacing_glyph = 2
+
+## full: animated battlefield backdrop; otherwise a dim veil over the paused game.
+func _overlay(nm: String, maxw: float, full := true) -> VBoxContainer:
 	var o := Control.new(); o.name = nm; o.set_anchors_preset(Control.PRESET_FULL_RECT); o.mouse_filter = Control.MOUSE_FILTER_STOP
-	var bg := OverlayBG.new(); bg.set_anchors_preset(Control.PRESET_FULL_RECT); bg.mouse_filter = Control.MOUSE_FILTER_IGNORE; o.add_child(bg)
+	var bg := WarBG.new(); bg.full = full; bg.set_anchors_preset(Control.PRESET_FULL_RECT); bg.mouse_filter = Control.MOUSE_FILTER_IGNORE; o.add_child(bg)
 	var sc := ScrollContainer.new(); sc.set_anchors_preset(Control.PRESET_FULL_RECT); sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; o.add_child(sc)
 	var cc := CenterContainer.new(); cc.size_flags_horizontal = Control.SIZE_EXPAND_FILL; cc.size_flags_vertical = Control.SIZE_EXPAND_FILL; sc.add_child(cc)
 	var mc := MarginContainer.new(); for s in ["left", "right", "top", "bottom"]: mc.add_theme_constant_override("margin_" + s, 16)
 	cc.add_child(mc)
-	var card := VBoxContainer.new(); card.add_theme_constant_override("separation", 14); card.custom_minimum_size.x = maxw
+	var card := VBoxContainer.new(); card.add_theme_constant_override("separation", 12); card.custom_minimum_size.x = maxw
 	mc.add_child(card)
+	o.resized.connect(func(): card.custom_minimum_size.x = minf(maxw, o.size.x - 32))
 	add_child(o); overlays[nm] = o; o.visible = false
 	o.set_meta("card", card)
 	return card
 
-func eyebrow(t: String) -> Label:
-	var l := lbl(t.to_upper(), f_disp, 11, C_ACC); return l
+## Olive panel with brass corner brackets.
+func frame(par: Control, sep := 10, accent := W_BRASS) -> VBoxContainer:
+	var p := Frame.new(); p.accent = accent
+	p.add_theme_stylebox_override("panel", cut(W_OLIVE, W_LINE, 1, 14, 16.0))
+	par.add_child(p)
+	var v := VBoxContainer.new(); v.add_theme_constant_override("separation", sep); p.add_child(v)
+	return v
+
+func eyebrow(t: String, col := W_BRASS) -> Label:
+	return lbl(t.to_upper(), f_wide, 11, col)
 
 func title(t: String, size := 64) -> Label:
-	return lbl(t.to_upper(), f_disp7, size)
+	return lbl(t.to_upper(), f_title, size, W_KHAKI)
 
 func cta(t: String, cb: Callable) -> Button:
-	var b := mkbtn(t, cb, 0, 54, 17)
-	var s := sb(C_ACC, C_ACC, 0)
-	b.add_theme_stylebox_override("normal", s); b.add_theme_stylebox_override("hover", sb(C_ACC.lightened(0.08), C_ACC, 0)); b.add_theme_stylebox_override("pressed", s)
-	b.add_theme_color_override("font_color", Color.WHITE); b.add_theme_font_override("font", f_disp7)
+	var b := mkbtn(t, cb, 0, 52, 17)
+	b.add_theme_stylebox_override("normal", cut(C_ACC, Color("ff8a7a"), 0))
+	b.add_theme_stylebox_override("hover", cut(C_ACC.lightened(0.08), C_ACC, 0))
+	b.add_theme_stylebox_override("pressed", cut(C_ACC.darkened(0.15), C_ACC, 0))
+	b.add_theme_color_override("font_color", Color.WHITE); b.add_theme_font_override("font", f_title)
+	var hz := Hazard.new(); hz.set_anchors_preset(Control.PRESET_FULL_RECT); hz.mouse_filter = Control.MOUSE_FILTER_IGNORE; b.add_child(hz)
 	return b
 
-func ghost(t: String, cb: Callable) -> Button:
-	var b := mkbtn(t, cb, 0, 46, 13)
-	b.add_theme_stylebox_override("normal", sb(C_PANEL2, C_LINE))
+func ghost(t: String, cb: Callable, h := 44.0) -> Button:
+	var b := mkbtn(t, cb, 0, h, 13)
+	b.add_theme_font_override("font", f_wide)
+	b.add_theme_stylebox_override("normal", cut(W_OLIVE2, W_LINE))
+	b.add_theme_stylebox_override("hover", cut(W_OLIVE2.lightened(0.06), W_SAND))
+	b.add_theme_stylebox_override("pressed", cut(W_OLIVE2.darkened(0.2), W_SAND))
+	b.add_theme_color_override("font_color", W_KHAKI); b.add_theme_color_override("font_hover_color", W_KHAKI); b.add_theme_color_override("font_pressed_color", W_KHAKI)
 	return b
 
 func seg(par: Control, group: String, opts: Array, cur: String, cb: Callable) -> HBoxContainer:
@@ -280,12 +318,13 @@ func seg(par: Control, group: String, opts: Array, cur: String, cb: Callable) ->
 	seg_btns[group] = {}
 	for o in opts:
 		var b := Button.new(); b.focus_mode = Control.FOCUS_NONE; b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.custom_minimum_size = Vector2(90, 46)
+		b.custom_minimum_size = Vector2(80, 42)
 		var v := VBoxContainer.new(); v.mouse_filter = Control.MOUSE_FILTER_IGNORE; v.set_anchors_preset(Control.PRESET_FULL_RECT); v.alignment = BoxContainer.ALIGNMENT_CENTER
-		var l := lbl(o[1].to_upper(), f_disp, 13); l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; v.add_child(l)
+		v.offset_left = 6; v.offset_right = -6; v.add_theme_constant_override("separation", 1)
+		var l := lbl(o[1].to_upper(), f_wide, 13, W_KHAKI); l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; v.add_child(l)
 		if o.size() > 2:
-			var s := lbl(o[2], f_body, 11, C_DIM); s.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; s.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; v.add_child(s)
-			b.custom_minimum_size.y = 78
+			var s := lbl(o[2], f_body, 11, W_SAND); s.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; s.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; v.add_child(s)
+			b.custom_minimum_size.y = 74
 		b.add_child(v)
 		b.pressed.connect(func(): _seg_pick(group, o[0]); cb.call(o[0]))
 		h.add_child(b); seg_btns[group][o[0]] = b
@@ -295,71 +334,122 @@ func seg(par: Control, group: String, opts: Array, cur: String, cb: Callable) ->
 func _seg_pick(group: String, val: String) -> void:
 	for k in seg_btns[group]:
 		var on: bool = k == val
-		seg_btns[group][k].add_theme_stylebox_override("normal", sb(Color("2e1513") if on else C_PANEL2, C_ACC if on else C_LINE))
-		seg_btns[group][k].add_theme_stylebox_override("hover", sb(Color("2e1513") if on else C_PANEL2, C_ACC if on else Color("3b4a54")))
+		var b: Button = seg_btns[group][k]
+		for st in ["normal", "hover", "pressed"]:
+			b.add_theme_stylebox_override(st, cut(W_SEL if on else W_OLIVE2, C_ACC if on else (W_SAND if st == "hover" else W_LINE), 2 if on else 1, 7))
 
 func _build_overlays() -> void:
-	# start
-	var c := _overlay("start", 620)
-	c.add_child(eyebrow("Vanguard vs Ashen Pact · 3D"))
-	var tl := VBoxContainer.new(); tl.add_theme_constant_override("separation", -14)
-	tl.add_child(title("Aurite", 72)); tl.add_child(lbl("FRONT", f_disp7, 72, C_ACC)); c.add_child(tl)
-	var lede := lbl("Two factions fight over the aurite fields of the Sable valley. Lead the Vanguard through the campaign, or pick a side in a skirmish.", f_body, 16, Color("c9d3d8"))
-	lede.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; c.add_child(lede)
-	seg(c, "mode", [["campaign", "Campaign"], ["skirmish", "Skirmish"]], "campaign", func(m): start_mode = m; camp_pane.visible = m == "campaign"; sk_pane.visible = m == "skirmish")
-	camp_pane = VBoxContainer.new(); camp_pane.add_theme_constant_override("separation", 6); c.add_child(camp_pane)
-	sk_pane = VBoxContainer.new(); sk_pane.add_theme_constant_override("separation", 12); sk_pane.visible = false; c.add_child(sk_pane)
-	sk_pane.add_child(lbl("FACTION", f_disp, 11, C_DIM))
+	_wide_fonts()
+	# ---- start: title on the left, orders dossier on the right
+	var c := _overlay("start", 1010)
+	var bar := HBoxContainer.new(); c.add_child(bar)
+	bar.add_child(eyebrow("Field command  //  Sable valley theatre", W_SAND))
+	var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL; bar.add_child(sp)
+	bar.add_child(eyebrow("Secure channel", W_GREEN))
+	var cols := HBoxContainer.new(); cols.add_theme_constant_override("separation", 28); c.add_child(cols)
+	var lc := VBoxContainer.new(); lc.size_flags_horizontal = Control.SIZE_EXPAND_FILL; lc.size_flags_stretch_ratio = 0.9; lc.add_theme_constant_override("separation", 10); cols.add_child(lc)
+	var ih := HBoxContainer.new(); ih.add_theme_constant_override("separation", 12); lc.add_child(ih)
+	var ins := Insignia.new(); ins.custom_minimum_size = Vector2(54, 54); ih.add_child(ins)
+	var iv := VBoxContainer.new(); iv.alignment = BoxContainer.ALIGNMENT_CENTER; iv.add_theme_constant_override("separation", 0); ih.add_child(iv)
+	iv.add_child(eyebrow("Vanguard  vs  Ashen Pact")); iv.add_child(lbl("THE WAR FOR AURITE", f_wide, 11, W_SAND))
+	var tl := VBoxContainer.new(); tl.add_theme_constant_override("separation", -16)
+	tl.add_child(title("Aurite", 70)); tl.add_child(lbl("FRONT", f_title, 70, C_ACC)); lc.add_child(tl)
+	var rule := Hazard.new(); rule.stripe = true; rule.custom_minimum_size = Vector2(0, 8); lc.add_child(rule)
+	var lede := lbl("Two armies dig in over the aurite fields of the Sable valley. Lead the Vanguard through the campaign, or pick a side in a skirmish.", f_body, 14, Color("cfc6ad"))
+	lede.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; lc.add_child(lede)
+	var lsp := Control.new(); lsp.size_flags_vertical = Control.SIZE_EXPAND_FILL; lc.add_child(lsp)
+	var fm := ghost("Field manual", func(): show_overlay("manual"), 40); fm.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN; fm.custom_minimum_size.x = 170; lc.add_child(fm)
+	var rc := VBoxContainer.new(); rc.size_flags_horizontal = Control.SIZE_EXPAND_FILL; cols.add_child(rc)
+	var d := frame(rc, 10)
+	seg(d, "mode", [["campaign", "Campaign"], ["skirmish", "Skirmish"]], "campaign", func(m): start_mode = m; camp_pane.visible = m == "campaign"; sk_pane.visible = m == "skirmish")
+	camp_pane = VBoxContainer.new(); camp_pane.add_theme_constant_override("separation", 6); d.add_child(camp_pane)
+	sk_pane = VBoxContainer.new(); sk_pane.add_theme_constant_override("separation", 8); sk_pane.visible = false; d.add_child(sk_pane)
+	sk_pane.add_child(eyebrow("Choose your army", W_SAND))
 	seg(sk_pane, "fac", [["vanguard", "Vanguard", "Heavy armor, Rangers, Skyhawk gunships, Bastion cannons, Skyfall missiles"], ["ashen", "Ashen Pact", "Fast raiders, Pyros, Wasp drones, Arc weapons, the Rift Engine"]], "vanguard", func(f): main.sk_fac = f)
-	sk_pane.add_child(lbl("DIFFICULTY", f_disp, 11, C_DIM))
-	seg(sk_pane, "diff", [["easy", "Easy"], ["normal", "Normal"], ["hard", "Hard"]], "normal", func(d): main.diff = d)
+	sk_pane.add_child(eyebrow("Enemy strength", W_SAND))
+	seg(sk_pane, "diff", [["easy", "Easy"], ["normal", "Normal"], ["hard", "Hard"]], "normal", func(dd): main.diff = dd)
 	sk_pane.add_child(cta("Deploy", func(): main.play({"fac": main.sk_fac, "diff": main.diff})))
-	var ctl := lbl("Touch: drag to scroll · tap a unit to select, tap ground or an enemy to order · tap the round button, then drag a box · pinch to zoom · double-tap a unit to grab every unit of that type on screen · hold, then drag at the destination to face a formation · long-press a build button to cancel.\nMouse: click to select or command, drag to box-select, double-click a unit for all of its type, right-drag to face a formation, middle-drag or WASD to scroll, wheel to zoom.", f_body, 13, Color("cfd8dc"))
-	ctl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; c.add_child(ctl)
-	# menu
-	c = _overlay("menu", 380)
-	c.add_child(eyebrow("Paused"))
-	c.add_child(cta("Resume", func(): main.resume()))
-	btn.sound = ghost("Sound: on", func(): main.toggle_sound()); c.add_child(btn.sound)
-	btn.music = ghost("Music: on", func(): main.toggle_music()); c.add_child(btn.music)
-	c.add_child(ghost("Restart", func(): main.restart()))
-	c.add_child(ghost("Main menu", func(): main.quit_to_menu()))
-	# end
-	c = _overlay("end", 480)
-	btn.end_eye = eyebrow("Operation complete"); c.add_child(btn.end_eye)
-	btn.end_title = title("Victory", 64); c.add_child(btn.end_title)
-	btn.end_stats = GridContainer.new(); btn.end_stats.columns = 3; btn.end_stats.add_theme_constant_override("h_separation", 8); btn.end_stats.add_theme_constant_override("v_separation", 8); c.add_child(btn.end_stats)
-	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 8); c.add_child(row)
+	# ---- field manual (controls)
+	c = _overlay("manual", 640)
+	d = frame(c, 10)
+	d.add_child(eyebrow("Field manual  //  standing orders"))
+	d.add_child(title("Controls", 40))
+	for row in [["TOUCH", "Drag to scroll · tap a unit to select, tap ground or an enemy to order · tap the round button, then drag a box · pinch to zoom · double-tap a unit to grab every unit of that type on screen · hold, then drag at the destination to face a formation · long-press a build button to cancel."], ["MOUSE", "Click to select or command, drag to box-select, double-click a unit for all of its type, right-drag to face a formation, middle-drag or WASD to scroll, wheel to zoom."]]:
+		var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 12); d.add_child(h)
+		var k := lbl(row[0], f_wide, 11, W_BRASS); k.custom_minimum_size.x = 60; h.add_child(k)
+		var t := lbl(row[1], f_body, 13, Color("d6cfba")); t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; t.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(t)
+	d.add_child(ghost("Back", func(): show_overlay("start")))
+	# ---- pause
+	c = _overlay("menu", 400, false)
+	d = frame(c, 10)
+	var ph := HBoxContainer.new(); d.add_child(ph)
+	var pv := VBoxContainer.new(); pv.size_flags_horizontal = Control.SIZE_EXPAND_FILL; pv.add_theme_constant_override("separation", -2); ph.add_child(pv)
+	pv.add_child(eyebrow("Operation paused")); pv.add_child(title("Stand by", 38))
+	var st := Stamp.new(); st.text = "HOLD"; st.col = C_ACC; st.custom_minimum_size = Vector2(96, 52); ph.add_child(st)
+	d.add_child(cta("Resume", func(): main.resume()))
+	var r1 := HBoxContainer.new(); r1.add_theme_constant_override("separation", 8); d.add_child(r1)
+	btn.sound = ghost("Sound: on", func(): main.toggle_sound()); btn.sound.size_flags_horizontal = Control.SIZE_EXPAND_FILL; r1.add_child(btn.sound)
+	btn.music = ghost("Music: on", func(): main.toggle_music()); btn.music.size_flags_horizontal = Control.SIZE_EXPAND_FILL; r1.add_child(btn.music)
+	var r2 := HBoxContainer.new(); r2.add_theme_constant_override("separation", 8); d.add_child(r2)
+	var rs := ghost("Restart", func(): main.restart()); rs.size_flags_horizontal = Control.SIZE_EXPAND_FILL; r2.add_child(rs)
+	var mm := ghost("Main menu", func(): main.quit_to_menu()); mm.size_flags_horizontal = Control.SIZE_EXPAND_FILL; r2.add_child(mm)
+	# ---- end
+	c = _overlay("end", 700)
+	d = frame(c, 12)
+	var eh := HBoxContainer.new(); d.add_child(eh)
+	var ev := VBoxContainer.new(); ev.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ev.add_theme_constant_override("separation", -4); eh.add_child(ev)
+	btn.end_eye = eyebrow("Operation complete"); ev.add_child(btn.end_eye)
+	btn.end_title = title("Victory", 60); ev.add_child(btn.end_title)
+	btn.end_stamp = Stamp.new(); btn.end_stamp.custom_minimum_size = Vector2(170, 70); eh.add_child(btn.end_stamp)
+	btn.end_stats = GridContainer.new(); btn.end_stats.columns = 5; btn.end_stats.add_theme_constant_override("h_separation", 8); btn.end_stats.add_theme_constant_override("v_separation", 8); d.add_child(btn.end_stats)
+	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 8); d.add_child(row)
 	btn.next = cta("Next mission", func(): main.next_mission()); btn.next.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(btn.next)
 	btn.again = cta("Play again", func(): main.play(main.last_opt)); btn.again.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(btn.again)
-	var em := ghost("Main menu", func(): main.show_start()); em.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(em)
-	# brief
-	c = _overlay("brief", 560)
-	btn.br_eye = eyebrow("Mission 1"); c.add_child(btn.br_eye)
-	btn.br_title = title("Landfall", 56); c.add_child(btn.br_title)
-	btn.br_text = lbl("", f_body, 16, Color("c9d3d8")); btn.br_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; c.add_child(btn.br_text)
-	var ob := PanelContainer.new(); ob.add_theme_stylebox_override("panel", _left_bar(C_AUR)); c.add_child(ob)
-	var obv := VBoxContainer.new(); ob.add_child(obv); obv.add_child(lbl("OBJECTIVES", f_disp, 11, C_AUR))
-	btn.br_obj = lbl("", f_body, 14); btn.br_obj.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; obv.add_child(btn.br_obj)
-	row = HBoxContainer.new(); row.add_theme_constant_override("separation", 8); c.add_child(row)
+	var em := ghost("Main menu", func(): main.show_start(), 52); em.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(em)
+	# ---- briefing dossier
+	c = _overlay("brief", 640)
+	d = frame(c, 10)
+	var bh := HBoxContainer.new(); d.add_child(bh)
+	var bv := VBoxContainer.new(); bv.size_flags_horizontal = Control.SIZE_EXPAND_FILL; bv.add_theme_constant_override("separation", -4); bh.add_child(bv)
+	btn.br_eye = eyebrow("Mission 1"); bv.add_child(btn.br_eye)
+	btn.br_title = title("Landfall", 48); bv.add_child(btn.br_title)
+	var cl := Stamp.new(); cl.text = "CLASSIFIED"; cl.col = C_ACC; cl.custom_minimum_size = Vector2(170, 60); bh.add_child(cl)
+	btn.br_text = lbl("", f_body, 14, Color("d6cfba")); btn.br_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; d.add_child(btn.br_text)
+	var ob := PanelContainer.new(); ob.add_theme_stylebox_override("panel", _left_bar(W_BRASS)); d.add_child(ob)
+	var obv := VBoxContainer.new(); ob.add_child(obv); obv.add_child(eyebrow("Objectives"))
+	btn.br_obj = lbl("", f_body, 14, W_KHAKI); btn.br_obj.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; obv.add_child(btn.br_obj)
+	row = HBoxContainer.new(); row.add_theme_constant_override("separation", 8); d.add_child(row)
 	var go := cta("Begin mission", func(): main.begin_mission()); go.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(go)
-	var bk := ghost("Back", func(): main.show_start()); bk.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(bk)
+	var bk := ghost("Back", func(): main.show_start(), 52); bk.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(bk)
 
 func show_overlay(nm: String) -> void:
 	for k in overlays: overlays[k].visible = k == nm
+
+func set_end_result(win: bool) -> void:
+	btn.end_title.add_theme_color_override("font_color", W_KHAKI if win else C_ACC)
+	btn.end_stamp.text = "SECURED" if win else "OVERRUN"
+	btn.end_stamp.col = W_GREEN if win else C_ACC
+	btn.end_stamp.queue_redraw()
 
 func render_missions(done: int) -> void:
 	for ch in camp_pane.get_children(): ch.queue_free()
 	for i in D.MISSIONS.size():
 		var m: Dictionary = D.MISSIONS[i]
-		var b := Button.new(); b.focus_mode = Control.FOCUS_NONE; b.custom_minimum_size = Vector2(0, 58); b.disabled = i > done
-		b.add_theme_stylebox_override("normal", sb(C_PANEL2, C_LINE)); b.add_theme_stylebox_override("disabled", sb(Color(C_PANEL2, 0.4), Color(C_LINE, 0.4)))
-		var h := HBoxContainer.new(); h.set_anchors_preset(Control.PRESET_FULL_RECT); h.offset_left = 12; h.offset_right = -12; h.add_theme_constant_override("separation", 10); h.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var n := lbl(str(i + 1), f_disp7, 22, C_ACC); n.custom_minimum_size.x = 30; n.size_flags_vertical = Control.SIZE_SHRINK_CENTER; h.add_child(n)
-		var v := VBoxContainer.new(); v.size_flags_horizontal = Control.SIZE_EXPAND_FILL; v.alignment = BoxContainer.ALIGNMENT_CENTER; v.mouse_filter = Control.MOUSE_FILTER_IGNORE; v.add_theme_constant_override("separation", 0)
-		v.add_child(lbl(m.title.to_upper(), f_disp, 15)); v.add_child(lbl(m.tag, f_body, 12, C_DIM)); h.add_child(v)
-		var st := lbl("WON" if i < done else ("NEXT" if i == done else "LOCKED"), f_disp, 10, C_OK if i < done else (C_AUR if i == done else C_DIM)); st.size_flags_vertical = Control.SIZE_SHRINK_CENTER; h.add_child(st)
-		if i > done: h.modulate.a = 0.4
+		var b := Button.new(); b.focus_mode = Control.FOCUS_NONE; b.custom_minimum_size = Vector2(0, 50); b.disabled = i > done
+		var nx := i == done
+		b.add_theme_stylebox_override("normal", cut(W_SEL if nx else W_OLIVE2, C_ACC if nx else W_LINE, 1, 7))
+		b.add_theme_stylebox_override("hover", cut(W_SEL if nx else W_OLIVE2, W_SAND, 1, 7))
+		b.add_theme_stylebox_override("pressed", cut(W_OLIVE2.darkened(0.2), W_SAND, 1, 7))
+		b.add_theme_stylebox_override("disabled", cut(Color(W_OLIVE2, 0.45), Color(W_LINE, 0.45), 1, 7))
+		var h := HBoxContainer.new(); h.set_anchors_preset(Control.PRESET_FULL_RECT); h.offset_left = 10; h.offset_right = -10; h.add_theme_constant_override("separation", 10); h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var n := lbl("%02d" % (i + 1), f_title, 20, C_ACC if nx else W_SAND); n.custom_minimum_size.x = 36; n.size_flags_vertical = Control.SIZE_SHRINK_CENTER; h.add_child(n)
+		var v := VBoxContainer.new(); v.size_flags_horizontal = Control.SIZE_EXPAND_FILL; v.alignment = BoxContainer.ALIGNMENT_CENTER; v.mouse_filter = Control.MOUSE_FILTER_IGNORE; v.add_theme_constant_override("separation", -1)
+		v.add_child(lbl("OPERATION " + m.title.to_upper(), f_wide, 14, W_KHAKI)); v.add_child(lbl(m.tag, f_body, 12, W_SAND)); h.add_child(v)
+		var st := Stamp.new(); st.small = true; st.custom_minimum_size = Vector2(104, 40); st.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		st.text = "SECURED" if i < done else ("ORDERS IN" if nx else "CLASSIFIED")
+		st.col = W_GREEN if i < done else (W_BRASS if nx else W_SAND)
+		st.mouse_filter = Control.MOUSE_FILTER_IGNORE; h.add_child(st)
+		if i > done: h.modulate.a = 0.45
 		b.add_child(h)
 		b.pressed.connect(func(): main.open_brief(i))
 		camp_pane.add_child(b)
@@ -367,9 +457,9 @@ func render_missions(done: int) -> void:
 func set_end_stats(rows: Array) -> void:
 	for ch in btn.end_stats.get_children(): ch.queue_free()
 	for r in rows:
-		var p := PanelContainer.new(); p.add_theme_stylebox_override("panel", sb(Color(0.08, 0.1, 0.12, 0.7), C_LINE)); p.custom_minimum_size.x = 140
-		var v := VBoxContainer.new(); p.add_child(v)
-		v.add_child(lbl(r[0].to_upper(), f_disp, 10, C_DIM)); v.add_child(lbl(str(r[1]), f_disp, 22))
+		var p := PanelContainer.new(); p.add_theme_stylebox_override("panel", cut(W_OLIVE2, W_LINE, 1, 7)); p.custom_minimum_size.x = 118; p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 0); p.add_child(v)
+		v.add_child(lbl(r[0].to_upper(), f_wide, 9, W_SAND)); v.add_child(lbl(str(r[1]), f_title, 20, W_KHAKI))
 		btn.end_stats.add_child(p)
 
 func tick(dt: float) -> void:
@@ -379,14 +469,191 @@ func tick(dt: float) -> void:
 	hud.get_meta("draw").queue_redraw()
 
 # ---------------- custom controls ----------------
-class OverlayBG extends Control:
+## Menu backdrop: a dusk battlefield (ridges, tank silhouettes, searchlights, shell flashes,
+## smoke, embers, wire). Without `full` it is only a dark veil over the paused game.
+class WarBG extends Control:
+	var full := true
+	var t := 0.0
+	func _process(dt: float) -> void:
+		if full and is_visible_in_tree():
+			t += dt; queue_redraw()
+	static func _h(i: float) -> float:
+		return fposmod(sin(i * 127.1 + 311.7) * 43758.5453, 1.0)
+	func _ridge(x: float, base: float, amp: float, sd: float, u: float) -> float:
+		var q := x / u
+		return base - amp * (sin(q * 0.006 + sd) * 0.55 + sin(q * 0.017 + sd * 2.3) * 0.3 + sin(q * 0.043 + sd * 4.1) * 0.15)
+	func _band(y0: Callable, col: Color, step: float) -> void:
+		var pts := PackedVector2Array(); var x := 0.0
+		while x <= size.x + step:
+			pts.append(Vector2(x, y0.call(x))); x += step
+		pts.append(Vector2(size.x + step, size.y)); pts.append(Vector2(0, size.y))
+		draw_colored_polygon(pts, col)
+	func _grad(r: Rect2, top: Color, bot: Color) -> void:
+		draw_polygon(PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]), PackedColorArray([top, top, bot, bot]))
+	func _tank(p: Vector2, u: float, col: Color, flip := false, ang := 0.0) -> void:
+		draw_set_transform(p, ang, Vector2(-u if flip else u, u))
+		draw_colored_polygon(PackedVector2Array([Vector2(-26, 0), Vector2(26, 0), Vector2(31, -6), Vector2(25, -11), Vector2(-25, -11), Vector2(-31, -6)]), col)
+		draw_colored_polygon(PackedVector2Array([Vector2(-13, -11), Vector2(12, -11), Vector2(9, -19), Vector2(-9, -19)]), col)
+		draw_rect(Rect2(8, -16.5, 30, 3), col)
+		draw_line(Vector2(-6, -19), Vector2(-9, -30), col, 1.2)
+		draw_set_transform(Vector2.ZERO)
 	func _draw() -> void:
 		var s := size
-		draw_rect(Rect2(Vector2.ZERO, s), Color(0.02, 0.03, 0.04, 0.94))
-		# warm glow toward the top left
+		if not full:
+			draw_rect(Rect2(Vector2.ZERO, s), Color(0.03, 0.035, 0.025, 0.72))
+			return
+		var u := s.y / 486.0
+		var hz := s.y * 0.62
+		# sky: soot black down to a burning horizon
+		_grad(Rect2(0, 0, s.x, hz * 0.55), Color("0b0a08"), Color("1a100c"))
+		_grad(Rect2(0, hz * 0.55, s.x, hz * 0.45 + 2), Color("1a100c"), Color("4a1a0f"))
+		draw_rect(Rect2(0, hz, s.x, s.y - hz), Color("140b08"))
+		# map grid
+		var g := 46.0 * u; var x := 0.0
+		while x < s.x:
+			draw_line(Vector2(x, 0), Vector2(x, s.y), Color(0.85, 0.8, 0.64, 0.025), 1.0); x += g
+		var y := 0.0
+		while y < s.y:
+			draw_line(Vector2(0, y), Vector2(s.x, y), Color(0.85, 0.8, 0.64, 0.025), 1.0); y += g
+		# fires glowing behind the far ridge
+		for i in 4:
+			var fx := s.x * (0.18 + 0.23 * i + 0.05 * _h(i + 3)); var fl := 0.85 + 0.15 * sin(t * (2.0 + i) + i)
+			draw_set_transform(Vector2(fx, hz), 0, Vector2(1.0, 0.35))
+			for k in 6:
+				draw_circle(Vector2.ZERO, (170 - k * 24) * u * fl, Color(0.95, 0.38, 0.12, 0.05))
+			draw_set_transform(Vector2.ZERO)
+		# searchlights sweeping the clouds
+		for i in 2:
+			var o := Vector2(s.x * (0.58 + 0.3 * i), hz + 26 * u)
+			var a := -PI / 2 + sin(t * (0.23 + 0.07 * i) + i * 2.0) * 0.6
+			var L := s.y * 1.1; var w := 0.07
+			draw_polygon(PackedVector2Array([o, o + Vector2(cos(a - w), sin(a - w)) * L, o + Vector2(cos(a + w), sin(a + w)) * L]),
+				PackedColorArray([Color(1, 0.93, 0.75, 0.16), Color(1, 0.93, 0.75, 0.0), Color(1, 0.93, 0.75, 0.0)]))
+		# shell bursts on the horizon
+		for i in 3:
+			var ph := t * 0.55 + i * 0.37; var k := floorf(ph); var f := ph - k
+			if f < 0.3:
+				var bx := s.x * (0.08 + 0.84 * _h(k * 3.0 + i)); var e := 1.0 - f / 0.3
+				draw_circle(Vector2(bx, hz - 6 * u), 46 * u * (0.4 + f * 2), Color(1, 0.6, 0.25, 0.10 * e))
+				draw_circle(Vector2(bx, hz - 6 * u), 14 * u * (0.5 + f * 2), Color(1, 0.85, 0.55, 0.35 * e))
+		# far ridge with a radio mast
+		var far := func(px): return _ridge(px + 300, hz + 4 * u, 22 * u, 1.3, u)
+		_band(far, Color("2c1610"), 8)
+		var mx := s.x * 0.7; var my: float = far.call(mx)
+		draw_line(Vector2(mx, my), Vector2(mx, my - 54 * u), Color("2c1610"), 2.0 * u)
+		draw_line(Vector2(mx - 10 * u, my), Vector2(mx, my - 54 * u), Color("2c1610"), 1.0 * u)
+		draw_line(Vector2(mx + 10 * u, my), Vector2(mx, my - 54 * u), Color("2c1610"), 1.0 * u)
+		if int(t * 1.2) % 2 == 0: draw_circle(Vector2(mx, my - 56 * u), 2.2 * u, Color(1, 0.25, 0.2, 0.9))
+		# drifting smoke
+		for i in 7:
+			var sx := fposmod(s.x * _h(i + 10) - t * (8 + 6 * _h(i)) * u, s.x + 400 * u) - 200 * u
+			var sy := hz - (10 + 70 * _h(i + 20)) * u
+			for k in 3:
+				draw_circle(Vector2(sx + k * 40 * u, sy - k * 6 * u), (60 + 30 * k) * u, Color(0.2, 0.15, 0.12, 0.05))
+		# mid ridge with an armored column
+		var mid := func(px): return _ridge(px, hz + 46 * u, 26 * u, 4.2, u)
+		var mc := Color("0f0907")
+		_band(mid, mc, 8)
+		for i in 4:
+			var tx := fposmod(s.x * [0.03, 0.13, 0.80, 0.91][i] + t * 4 * u, s.x + 80 * u) - 40 * u
+			var ty: float = mid.call(tx)
+			var slope := atan2(float(mid.call(tx + 10)) - ty, 10.0)
+			_tank(Vector2(tx, ty + 2 * u), u * (1.0 - 0.1 * (i % 2)), mc, false, slope)
+		# foreground: earth, tank traps and barbed wire
+		var near := func(px): return _ridge(px + 900, s.y * 0.9, 16 * u, 7.7, u)
+		var nc := Color("060403")
+		_band(near, nc, 8)
+		var px := 30.0 * u; var prev := Vector2(-1, -1)
+		while px < s.x + 80 * u:
+			var py: float = near.call(px)
+			var top := Vector2(px, py - 30 * u)
+			draw_line(Vector2(px, py + 4 * u), top, nc, 3.0 * u)
+			if prev.x >= 0:
+				var pts := PackedVector2Array()
+				for k in 13:
+					var f2 := k / 12.0
+					pts.append(prev.lerp(top, f2) + Vector2(0, sin(f2 * PI) * 7 * u))
+				draw_polyline(pts, nc, 1.4 * u)
+				for k in range(1, 12, 2):
+					var bp := pts[k]
+					draw_line(bp + Vector2(-3, -3) * u, bp + Vector2(3, 3) * u, nc, 1.0 * u)
+			prev = top
+			if _h(px) > 0.55:
+				var hx := px + 40 * u; var hy: float = near.call(hx)
+				draw_line(Vector2(hx - 10 * u, hy), Vector2(hx + 10 * u, hy - 18 * u), nc, 2.5 * u)
+				draw_line(Vector2(hx + 10 * u, hy), Vector2(hx - 10 * u, hy - 18 * u), nc, 2.5 * u)
+				draw_line(Vector2(hx, hy + 2 * u), Vector2(hx + 2 * u, hy - 20 * u), nc, 2.5 * u)
+			px += 120 * u
+		# embers
+		for i in 46:
+			var sp := (14 + 22 * _h(i + 40)) * u
+			var ey := s.y - fposmod(t * sp + _h(i + 50) * s.y, s.y * 0.85)
+			var ex := s.x * _h(i + 60) + sin(t * 0.8 + i) * 14 * u
+			var life := (s.y - ey) / (s.y * 0.85)
+			draw_circle(Vector2(ex, ey), (1.0 + _h(i + 70) * 1.4) * u, Color(1, 0.55 + 0.3 * _h(i), 0.2, 0.75 * (1.0 - life)))
+		# vignette, darker on the left behind the title
+		_grad(Rect2(0, 0, s.x, s.y * 0.25), Color(0, 0, 0, 0.55), Color(0, 0, 0, 0))
+		draw_polygon(PackedVector2Array([Vector2.ZERO, Vector2(s.x * 0.5, 0), Vector2(s.x * 0.5, s.y), Vector2(0, s.y)]),
+			PackedColorArray([Color(0, 0, 0, 0.45), Color(0, 0, 0, 0), Color(0, 0, 0, 0), Color(0, 0, 0, 0.45)]))
+
+## Panel with brass L-brackets in its corners.
+class Frame extends PanelContainer:
+	var accent := Color("d9a441")
+	func _draw() -> void:
+		var r := Rect2(Vector2(-3, -3), size + Vector2(6, 6)); var L := 16.0; var w := 2.0
+		for c in [[r.position, Vector2(1, 1)], [Vector2(r.end.x, r.position.y), Vector2(-1, 1)], [r.end, Vector2(-1, -1)], [Vector2(r.position.x, r.end.y), Vector2(1, -1)]]:
+			var p: Vector2 = c[0]; var d: Vector2 = c[1]
+			draw_line(p, p + Vector2(d.x * L, 0), accent, w); draw_line(p, p + Vector2(0, d.y * L), accent, w)
+
+## Rubber stamp: rotated double-ruled box with a word in it.
+class Stamp extends Control:
+	var text := "CLASSIFIED"
+	var col := Color("e5483f")
+	var small := false
+	func _draw() -> void:
+		var f: Font = load("res://fonts/chakra-petch-latin-700-normal.woff2")
+		var fs := 11 if small else 18
+		var tw := f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		var bw := tw + (14.0 if small else 24.0); var bh := fs + (10.0 if small else 18.0)
+		draw_set_transform(size / 2, -0.12 if small else -0.16)
+		var r := Rect2(-bw / 2, -bh / 2, bw, bh); var c := Color(col, 0.85)
+		draw_rect(r, c, false, 2.0)
+		if not small: draw_rect(r.grow(-4), Color(col, 0.6), false, 1.0)
+		draw_string(f, Vector2(-tw / 2, fs * 0.36), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, c)
+		draw_set_transform(Vector2.ZERO)
+
+## Hazard stripes: along the bottom of a button, or as a full strip when `stripe`.
+class Hazard extends Control:
+	var stripe := false
+	func _draw() -> void:
+		var h := size.y if stripe else 5.0
+		var y0 := 0.0 if stripe else size.y - h
+		var x := -h; var i := 0
+		var a := Color("d9a441", 0.9) if stripe else Color(0, 0, 0, 0.35)
+		while x < size.x:
+			if i % 2 == 0:
+				var pts := PackedVector2Array([Vector2(x, y0 + h), Vector2(x + h, y0), Vector2(x + 2 * h, y0), Vector2(x + h, y0 + h)])
+				for k in pts.size(): pts[k].x = clampf(pts[k].x, 0, size.x)
+				draw_colored_polygon(pts, a)
+			x += h; i += 1
+		if stripe: draw_rect(Rect2(0, 0, size.x, h), Color("d9a441", 0.25), false, 1.0)
+
+## Unit insignia: a shield with three chevrons and a star.
+class Insignia extends Control:
+	func _draw() -> void:
+		var s := size; var c := Color("d9a441"); var k := Color("d8cba3")
+		var sh := PackedVector2Array([Vector2(s.x * 0.5, 0), Vector2(s.x, s.y * 0.14), Vector2(s.x * 0.92, s.y * 0.66), Vector2(s.x * 0.5, s.y), Vector2(s.x * 0.08, s.y * 0.66), Vector2(0, s.y * 0.14)])
+		draw_colored_polygon(sh, Color("21271a"))
+		sh.append(sh[0]); draw_polyline(sh, c, 2.0)
+		for i in 3:
+			var y := s.y * (0.48 + 0.13 * i)
+			draw_polyline(PackedVector2Array([Vector2(s.x * 0.24, y), Vector2(s.x * 0.5, y + s.y * 0.11), Vector2(s.x * 0.76, y)]), k, 3.0)
+		var st := PackedVector2Array(); var cc := Vector2(s.x * 0.5, s.y * 0.27)
 		for i in 10:
-			var r: float = (1.0 - i / 10.0) * max(s.x, s.y) * 0.7
-			draw_circle(s * Vector2(0.3, 0.2), r, Color(0.24, 0.055, 0.047, 0.06))
+			var a := -PI / 2 + i * PI / 5; var r := s.x * (0.13 if i % 2 == 0 else 0.055)
+			st.append(cc + Vector2(cos(a), sin(a)) * r)
+		draw_colored_polygon(st, C_ACC_STAR)
+	const C_ACC_STAR := Color("e5483f")
 
 class HudDraw extends Control:
 	var ui
