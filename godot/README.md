@@ -19,6 +19,7 @@ Copy it to the phone and open it (allow "install unknown apps"). It installs nex
 - Player is blue, the AI is red.
 - Fire is terrain-aware. Direct-fire weapons need a clear line over the terrain: units with a blocked shot move closer, and turrets pick another target. Mortars fly a real ballistic arc whose peak clears every hill on the way. A shell that meets a hillside bursts on it.
 - Formation facing by drag (see controls).
+- Buildings have more low-poly detail (windows, rails, pipes, fans, lamps, sandbags, a crane, a flag) and animations: they assemble inside a scaffold with a glowing cut line and sparks, come apart top-down when sold, and sink and tilt when destroyed. Harvesters throw aurite crystals into their bin and stream them into the refinery, which shows a floating "+N". The war factory door rolls up when a unit comes out.
 - Sound effects and the march are pre-rendered from the same synth recipes (`tools/synth.py`).
   The calm and combat layers of the march crossfade with how hot the fighting is.
 
@@ -40,4 +41,4 @@ and `debug_keystore` in the editor settings. This APK was signed with the same d
 (`aurite-front-3d/apk/android-wrapper-src.tgz`).
 
 Tests: `godot --headless --path . tests/sim_test.tscn` (AI vs AI soak + every mission's setup). With a display,
-`AF_SHOT=<dir> godot --path .` takes screenshots and `AF_INPUT=1` also replays touch gestures.
+`AF_SHOT=<dir> godot --path .` takes screenshots and `AF_INPUT=1` also replays touch gestures. `AF_MODE=b` shoots every building model and the build, sell, collapse and harvesting animations.
