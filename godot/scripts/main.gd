@@ -176,17 +176,32 @@ func camp_open(id: String) -> bool:
 			return camp_open(prev.id) and camp_prog(prev.id) >= prev.missions.size()
 	return true
 
+## Opens the campaign screen scrolled to this campaign.
 func pick_campaign(id: String) -> void:
 	camp_id = id
-	U.render_missions(D.camp(id), camp_prog(id) if camp_open(id) else -1)
+	show_campaigns()
+
+func _camp_rows() -> Array:
+	return D.CAMPAIGNS.map(func(C): return {"C": C, "open": camp_open(C.id), "done": camp_prog(C.id)})
 
 func show_start() -> void:
 	if not camp_open(camp_id): camp_id = D.CAMPAIGNS[0].id
-	U.set_camp_locks(func(id): return camp_open(id))
-	U.render_missions(D.camp(camp_id), camp_prog(camp_id))
+	# continue where the player is: the furthest open campaign that is not finished
+	var cur: Dictionary = D.CAMPAIGNS[0]
+	for C in D.CAMPAIGNS:
+		if camp_open(C.id): cur = C
+		if camp_open(C.id) and camp_prog(C.id) < C.missions.size(): cur = C; break
+	var dn := mini(camp_prog(cur.id), cur.missions.size())
+	var nxt: String = ("Continue  ·  Operation " + cur.missions[dn].title) if dn < cur.missions.size() else "Every campaign won  ·  replay any mission"
+	U.set_camp_tile(nxt, "%s · %s  ·  %d of %d secured" % [cur.num, cur.name, dn, cur.missions.size()])
 	U.show_overlay("start")
 	paused = true
 	A.music_stop()
+
+func show_campaigns() -> void:
+	if not camp_open(camp_id): camp_id = D.CAMPAIGNS[0].id
+	U.render_campaigns(_camp_rows(), camp_id)
+	U.show_overlay("campaign")
 
 func open_brief(i: int) -> void:
 	brief_i = i
@@ -205,11 +220,8 @@ func begin_mission() -> void:
 
 func next_mission() -> void:
 	if brief_i >= D.camp(camp_id).missions.size() - 1 and _sequel(camp_id) != "":
-		camp_id = _sequel(camp_id); U.set_camp_locks(func(id): return camp_open(id)); _sel_camp_ui(); open_brief(0); return
+		camp_id = _sequel(camp_id); open_brief(0); return
 	open_brief(min(D.camp(camp_id).missions.size() - 1, brief_i + 1))
-
-func _sel_camp_ui() -> void:
-	U.render_missions(D.camp(camp_id), camp_prog(camp_id))
 
 func play(opt: Dictionary) -> void:
 	last_opt = opt
@@ -259,7 +271,8 @@ func toggle_music() -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		if U.overlays.menu.visible: resume()
-		elif U.overlays.brief.visible or U.overlays.manual.visible: show_start()
+		elif U.overlays.brief.visible: show_campaigns()
+		elif U.overlays.manual.visible or U.overlays.campaign.visible or U.overlays.skirmish.visible: show_start()
 		elif S.teams.size() and not S.over and not U.overlays.start.visible: open_menu()
 		return
 	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
@@ -998,11 +1011,14 @@ func _autotest(dir: String) -> void:
 
 ## AF_MODE=menus: one screenshot per menu screen.
 func _menu_shots(dir: String) -> void:
-	U.seg_btns.mode.skirmish.pressed.emit()
+	U.show_overlay("skirmish")
 	await get_tree().create_timer(0.3).timeout
 	await _shot(dir + "/01_skirmish.png")
-	U.seg_btns.mode.campaign.pressed.emit()
-	await get_tree().create_timer(0.2).timeout
+	U.btn.camp_tile.pressed.emit()
+	await get_tree().create_timer(0.3).timeout
+	await _shot(dir + "/01a_campaigns.png")
+	U.camp_scroll.scroll_vertical = 0
+	await get_tree().create_timer(0.1).timeout
 	# drag the mission list: only the list moves, a drag that scrolled does not open a briefing
 	var lr := U.camp_scroll.get_global_rect(); var p0 := lr.get_center() + Vector2(0, lr.size.y * 0.3)
 	var sv0 := U.camp_scroll.scroll_vertical
@@ -1117,10 +1133,9 @@ func _bld_test(dir: String) -> void:
 
 ## AF_MODE=choir: the Hollow Choir's skirmish pick, buildings, units, a burrowing sapper, shard fields, the Cantor's aura and the Chorus Well.
 func _choir_shots(dir: String) -> void:
-	U.seg_btns.mode.skirmish.pressed.emit(); U.seg_btns.fac.choir.pressed.emit()
+	U.show_overlay("skirmish"); U.seg_btns.fac.choir.pressed.emit()
 	await get_tree().create_timer(0.3).timeout
 	await _shot(dir + "/c0_skirmish.png")
-	U.seg_btns.mode.campaign.pressed.emit()
 	play({"fac": "choir", "enemy": "vanguard", "diff": "normal", "seed": 4242})
 	paused = true
 	var hq: Ent = S.find_hq(0)

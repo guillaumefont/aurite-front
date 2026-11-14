@@ -49,12 +49,9 @@ var grid: GridContainer
 var grid_scroll: ScrollContainer
 var items := {}
 var overlays := {}
-var start_mode := "campaign"
 var camp_pane: VBoxContainer
 var camp_scroll: ScrollContainer
 var press_scroll := 0
-var camp_box: VBoxContainer
-var camp_tag: Label
 var sk_pane: VBoxContainer
 var seg_btns := {}
 
@@ -404,24 +401,35 @@ func _build_overlays() -> void:
 	lede.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; lc.add_child(lede)
 	var lsp := Control.new(); lsp.size_flags_vertical = Control.SIZE_EXPAND_FILL; lc.add_child(lsp)
 	var fm := ghost("Field manual", func(): show_overlay("manual"), 40); fm.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN; fm.custom_minimum_size.x = 170; lc.add_child(fm)
+	# right: the orders dossier, two big doors: the campaign screen and the skirmish screen
 	var rc := VBoxContainer.new(); rc.size_flags_horizontal = Control.SIZE_EXPAND_FILL; cols.add_child(rc)
-	var d := frame(rc, 10)
+	var d := frame(rc, 12)
 	d.get_parent().size_flags_vertical = Control.SIZE_EXPAND_FILL
-	seg(d, "mode", [["campaign", "Campaign"], ["skirmish", "Skirmish"]], "campaign", func(m): start_mode = m; camp_box.visible = m == "campaign"; sk_pane.visible = m == "skirmish")
-	camp_box = VBoxContainer.new(); camp_box.add_theme_constant_override("separation", 8); camp_box.size_flags_vertical = Control.SIZE_EXPAND_FILL; d.add_child(camp_box)
-	var co: Array = []
-	for C in D.CAMPAIGNS: co.append([C.id, C.num + " · " + C.name, D.FACS[C.fac].name + (" · start here" if C.num == "I" else " · the sequel")])
-	seg(camp_box, "camp", co, D.CAMPAIGNS[0].id, func(id): main.pick_campaign(id))
-	camp_tag = lbl("", f_body, 12, W_SAND); camp_tag.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; camp_box.add_child(camp_tag)
-	# the mission list scrolls on its own (drag on phones, wheel on desktop)
+	d.add_child(eyebrow("Orders", W_SAND))
+	btn.camp_tile = _tile(d, "Campaign", true, func(): main.show_campaigns())
+	btn.sk_tile = _tile(d, "Skirmish", false, func(): show_overlay("skirmish"))
+	btn.sk_tile.get_meta("l1").text = "Vanguard, Ashen Pact or Hollow Choir against the AI"
+	btn.sk_tile.get_meta("l2").text = "Pick both armies and the enemy's strength"
+	# ---- campaigns: chapters stacked in one list that scrolls on its own
+	c = _overlay("campaign", 1010, true, true)
+	var ch := HBoxContainer.new(); ch.add_theme_constant_override("separation", 16); c.add_child(ch)
+	var cb := ghost("Back", func(): main.show_start(), 44); cb.custom_minimum_size.x = 130; ch.add_child(cb)
+	var chv := VBoxContainer.new(); chv.add_theme_constant_override("separation", -4); chv.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ch.add_child(chv)
+	chv.add_child(eyebrow("Field command  //  campaigns", W_SAND)); chv.add_child(title("The war for aurite", 28))
 	camp_scroll = ScrollContainer.new(); camp_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	camp_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; camp_scroll.custom_minimum_size.y = 100
 	var vsb := camp_scroll.get_v_scroll_bar(); vsb.custom_minimum_size.x = 6
 	vsb.add_theme_stylebox_override("scroll", cut(Color(W_OLIVE2, 0.6), Color(0, 0, 0, 0), 0, 0, 0))
 	for g in ["grabber", "grabber_highlight", "grabber_pressed"]: vsb.add_theme_stylebox_override(g, cut(W_BRASS if g != "grabber" else Color(W_BRASS, 0.7), Color(0, 0, 0, 0), 0, 0, 0))
-	camp_box.add_child(camp_scroll)
-	camp_pane = VBoxContainer.new(); camp_pane.add_theme_constant_override("separation", 5); camp_pane.size_flags_horizontal = Control.SIZE_EXPAND_FILL; camp_scroll.add_child(camp_pane)
-	sk_pane = VBoxContainer.new(); sk_pane.add_theme_constant_override("separation", 8); sk_pane.visible = false; d.add_child(sk_pane)
+	c.add_child(camp_scroll)
+	camp_pane = VBoxContainer.new(); camp_pane.add_theme_constant_override("separation", 10); camp_pane.size_flags_horizontal = Control.SIZE_EXPAND_FILL; camp_scroll.add_child(camp_pane)
+	# ---- skirmish setup
+	c = _overlay("skirmish", 860)
+	var sh := HBoxContainer.new(); sh.add_theme_constant_override("separation", 16); c.add_child(sh)
+	var sb2 := ghost("Back", func(): main.show_start(), 44); sb2.custom_minimum_size.x = 130; sh.add_child(sb2)
+	var shv := VBoxContainer.new(); shv.add_theme_constant_override("separation", -4); sh.add_child(shv)
+	shv.add_child(eyebrow("Field command  //  skirmish", W_SAND)); shv.add_child(title("Skirmish", 28))
+	sk_pane = frame(c, 8)
 	sk_pane.add_child(eyebrow("Choose your army", W_SAND))
 	seg(sk_pane, "fac", [["vanguard", "Vanguard", "Heavy armor, Rangers, Skyhawk gunships, Bastion cannons, Skyfall missiles"], ["ashen", "Ashen Pact", "Fast raiders, Pyros, Wasp drones, Arc weapons, the Rift Engine"],
 		["choir", "Hollow Choir", "Cheap swarms, tunnels, crystal gardens, burrowing sappers, the Cantor"]], "vanguard", func(f): main.sk_fac = f)
@@ -484,7 +492,7 @@ func _build_overlays() -> void:
 	btn.br_obj = lbl("", f_body, 14, W_KHAKI); btn.br_obj.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; obv.add_child(btn.br_obj)
 	row = HBoxContainer.new(); row.add_theme_constant_override("separation", 8); d.add_child(row)
 	var go := cta("Begin mission", func(): main.begin_mission()); go.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(go)
-	var bk := ghost("Back", func(): main.show_start(), 52); bk.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(bk)
+	var bk := ghost("Back", func(): main.show_campaigns(), 52); bk.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(bk)
 
 ## Boot splash art (AF_MODE=splash renders it to res://splash.png).
 func build_splash() -> void:
@@ -526,46 +534,82 @@ func set_brief_heroes(list: Array, fac: String) -> void:
 		var t := lbl(HERO_LINES.get(h, ""), f_body, 12, W_SAND); t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; v.add_child(t)
 		btn.br_heroes.add_child(p)
 
-## Greys out the campaign tabs that are still locked (a campaign opens when the one before it is won).
-func set_camp_locks(is_open: Callable) -> void:
-	for i in D.CAMPAIGNS.size():
-		var C: Dictionary = D.CAMPAIGNS[i]
-		var b: Button = seg_btns.camp[C.id]
-		var op: bool = is_open.call(C.id)
-		b.modulate.a = 1.0 if op else 0.55
-		var sub: Label = b.get_child(0).get_child(1)
-		sub.text = D.FACS[C.fac].name + ((" · start here" if i == 0 else " · the sequel") if op else " · locked")
+## A big two-line door on the start screen (red for the main action).
+func _tile(par: Control, t: String, main_action: bool, cb: Callable) -> Button:
+	var b := Button.new(); b.focus_mode = Control.FOCUS_NONE; b.custom_minimum_size = Vector2(0, 104); b.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var bg := C_ACC.darkened(0.55) if main_action else W_OLIVE2
+	var bd := C_ACC if main_action else W_LINE
+	b.add_theme_stylebox_override("normal", cut(bg, bd, 2 if main_action else 1, 12))
+	b.add_theme_stylebox_override("hover", cut(bg.lightened(0.06), bd if main_action else W_SAND, 2 if main_action else 1, 12))
+	b.add_theme_stylebox_override("pressed", cut(bg.darkened(0.2), W_SAND, 2, 12))
+	b.pressed.connect(cb)
+	var h := HBoxContainer.new(); h.set_anchors_preset(Control.PRESET_FULL_RECT); h.offset_left = 20; h.offset_right = -16; h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var v := VBoxContainer.new(); v.alignment = BoxContainer.ALIGNMENT_CENTER; v.size_flags_horizontal = Control.SIZE_EXPAND_FILL; v.mouse_filter = Control.MOUSE_FILTER_IGNORE; v.add_theme_constant_override("separation", 2); h.add_child(v)
+	v.add_child(lbl(t.to_upper(), f_title, 30, Color.WHITE if main_action else W_KHAKI))
+	var l1 := lbl("", f_wide, 12, W_BRASS if main_action else W_SAND); v.add_child(l1)
+	var l2 := lbl("", f_body, 12, W_SAND); v.add_child(l2)
+	var ar := lbl(">>", f_title, 26, Color.WHITE if main_action else W_SAND); ar.size_flags_vertical = Control.SIZE_SHRINK_CENTER; h.add_child(ar)
+	b.add_child(h); b.set_meta("l1", l1); b.set_meta("l2", l2)
+	par.add_child(b)
+	return b
 
-## done = -1: the campaign is locked (its tab still shows what is ahead, every mission classified).
-func render_missions(C: Dictionary, done: int) -> void:
-	var locked := done < 0
-	camp_tag.text = ("Locked: finish %s to open this campaign. " % D.CAMPAIGNS[maxi(0, D.CAMPAIGNS.find(C) - 1)].name) + C.tag if locked else C.tag
-	_seg_pick("camp", C.id)
+## Start screen campaign door: where the player left off.
+func set_camp_tile(line1: String, line2: String) -> void:
+	btn.camp_tile.get_meta("l1").text = line1.to_upper(); btn.camp_tile.get_meta("l2").text = line2
+
+## Every campaign as a chapter: a header, then its missions two to a row. rows: [{C, open, done}].
+func render_campaigns(rows: Array, focus_id: String) -> void:
 	for ch in camp_pane.get_children(): ch.queue_free()
-	for i in C.missions.size():
-		var m: Dictionary = C.missions[i]
-		var b := Button.new(); b.focus_mode = Control.FOCUS_NONE; b.custom_minimum_size = Vector2(0, 46); b.disabled = i > done
-		var nx: bool = i == done
-		b.add_theme_stylebox_override("normal", cut(W_SEL if nx else W_OLIVE2, C_ACC if nx else W_LINE, 1, 7))
-		b.add_theme_stylebox_override("hover", cut(W_SEL if nx else W_OLIVE2, W_SAND, 1, 7))
-		b.add_theme_stylebox_override("pressed", cut(W_OLIVE2.darkened(0.2), W_SAND, 1, 7))
-		b.add_theme_stylebox_override("disabled", cut(Color(W_OLIVE2, 0.45), Color(W_LINE, 0.45), 1, 7))
-		var h := HBoxContainer.new(); h.set_anchors_preset(Control.PRESET_FULL_RECT); h.offset_left = 10; h.offset_right = -10; h.add_theme_constant_override("separation", 10); h.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var n := lbl("%02d" % (i + 1), f_title, 20, C_ACC if nx else W_SAND); n.custom_minimum_size.x = 36; n.size_flags_vertical = Control.SIZE_SHRINK_CENTER; h.add_child(n)
-		var v := VBoxContainer.new(); v.size_flags_horizontal = Control.SIZE_EXPAND_FILL; v.alignment = BoxContainer.ALIGNMENT_CENTER; v.mouse_filter = Control.MOUSE_FILTER_IGNORE; v.add_theme_constant_override("separation", -1)
-		v.add_child(lbl("OPERATION " + m.title.to_upper(), f_wide, 14, W_KHAKI)); v.add_child(lbl(m.tag + "  ·  " + D.THEMES[m.map.theme].name, f_body, 12, W_SAND)); h.add_child(v)
-		var st := Stamp.new(); st.small = true; st.custom_minimum_size = Vector2(104, 38); st.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		st.text = "SECURED" if i < done else ("ORDERS IN" if nx else "CLASSIFIED")
-		st.col = W_GREEN if i < done else (W_BRASS if nx else W_SAND)
-		st.mouse_filter = Control.MOUSE_FILTER_IGNORE; h.add_child(st)
-		if i > done: h.modulate.a = 0.45
-		b.add_child(h)
-		# PASS lets a drag that starts on a mission scroll the list; a press that scrolled is not a tap
-		b.mouse_filter = Control.MOUSE_FILTER_PASS
-		b.button_down.connect(func(): press_scroll = camp_scroll.scroll_vertical)
-		b.pressed.connect(func(): if absi(camp_scroll.scroll_vertical - press_scroll) < 8: main.open_brief(i))
-		camp_pane.add_child(b)
-		if nx: _show_next.call_deferred(b)
+	var focus: Control = null
+	for r in rows:
+		var C: Dictionary = r.C; var op: bool = r.open; var done: int = r.done if op else -1
+		var hp := PanelContainer.new(); hp.add_theme_stylebox_override("panel", _left_bar(C_ACC if op else W_LINE)); camp_pane.add_child(hp)
+		var hh := HBoxContainer.new(); hh.add_theme_constant_override("separation", 16); hp.add_child(hh)
+		var num := lbl(C.num, f_title, 36, C_ACC if op else W_SAND); num.custom_minimum_size.x = 44; num.size_flags_vertical = Control.SIZE_SHRINK_CENTER; hh.add_child(num)
+		var hv := VBoxContainer.new(); hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL; hv.add_theme_constant_override("separation", 0); hh.add_child(hv)
+		hv.add_child(lbl(C.name.to_upper(), f_wide, 18, W_KHAKI))
+		var prev: Dictionary = D.CAMPAIGNS[maxi(0, D.CAMPAIGNS.find(C) - 1)]
+		hv.add_child(lbl(D.FACS[C.fac].name.to_upper() + "  ·  " + ("%d OF %d SECURED" % [mini(done, C.missions.size()), C.missions.size()] if op else "FINISH " + prev.name.to_upper() + " TO OPEN"), f_wide, 11, W_BRASS if op else W_SAND))
+		var tg := lbl(C.tag, f_body, 12, W_SAND); tg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; hv.add_child(tg)
+		var hs := Stamp.new(); hs.small = true; hs.custom_minimum_size = Vector2(120, 44); hs.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		hs.text = "LOCKED" if not op else ("COMPLETE" if done >= C.missions.size() else ("IN PROGRESS" if done > 0 else "NEW"))
+		hs.col = W_SAND if not op else (W_GREEN if done >= C.missions.size() else W_BRASS)
+		hh.add_child(hs)
+		if not op: hp.modulate.a = 0.7
+		if C.id == focus_id and focus == null: focus = hp
+		var grid := GridContainer.new(); grid.columns = 2; grid.add_theme_constant_override("h_separation", 8); grid.add_theme_constant_override("v_separation", 8); camp_pane.add_child(grid)
+		for i in C.missions.size():
+			var b := _mission_btn(C, i, done)
+			grid.add_child(b)
+			if C.id == focus_id and i == done: focus = b
+		var gap := Control.new(); gap.custom_minimum_size.y = 6; camp_pane.add_child(gap)
+	if focus: _show_next.call_deferred(focus)
+
+func _mission_btn(C: Dictionary, i: int, done: int) -> Button:
+	var m: Dictionary = C.missions[i]
+	var b := Button.new(); b.focus_mode = Control.FOCUS_NONE; b.custom_minimum_size = Vector2(0, 64); b.disabled = i > done; b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var nx: bool = i == done
+	b.add_theme_stylebox_override("normal", cut(W_SEL if nx else W_OLIVE2, C_ACC if nx else W_LINE, 2 if nx else 1, 9))
+	b.add_theme_stylebox_override("hover", cut(W_SEL if nx else W_OLIVE2, W_SAND, 1, 9))
+	b.add_theme_stylebox_override("pressed", cut(W_OLIVE2.darkened(0.2), W_SAND, 1, 9))
+	b.add_theme_stylebox_override("disabled", cut(Color(W_OLIVE2, 0.45), Color(W_LINE, 0.45), 1, 9))
+	var h := HBoxContainer.new(); h.set_anchors_preset(Control.PRESET_FULL_RECT); h.offset_left = 12; h.offset_right = -10; h.add_theme_constant_override("separation", 10); h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var n := lbl("%02d" % (i + 1), f_title, 22, C_ACC if nx else W_SAND); n.custom_minimum_size.x = 38; n.size_flags_vertical = Control.SIZE_SHRINK_CENTER; h.add_child(n)
+	var v := VBoxContainer.new(); v.size_flags_horizontal = Control.SIZE_EXPAND_FILL; v.alignment = BoxContainer.ALIGNMENT_CENTER; v.mouse_filter = Control.MOUSE_FILTER_IGNORE; v.add_theme_constant_override("separation", 1)
+	var t := lbl(m.title.to_upper(), f_wide, 14, W_KHAKI); t.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS; t.clip_text = true; v.add_child(t)
+	var tg := lbl(m.tag + "  ·  " + D.THEMES[m.map.theme].name, f_body, 12, W_SAND); tg.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS; tg.clip_text = true; v.add_child(tg)
+	h.add_child(v)
+	var st := Stamp.new(); st.small = true; st.custom_minimum_size = Vector2(98, 38); st.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	st.text = "SECURED" if i < done else ("ORDERS IN" if nx else "CLASSIFIED")
+	st.col = W_GREEN if i < done else (W_BRASS if nx else W_SAND)
+	st.mouse_filter = Control.MOUSE_FILTER_IGNORE; h.add_child(st)
+	if i > done: h.modulate.a = 0.45
+	b.add_child(h)
+	# PASS lets a drag that starts on a mission scroll the list; a press that scrolled is not a tap
+	b.mouse_filter = Control.MOUSE_FILTER_PASS
+	b.button_down.connect(func(): press_scroll = camp_scroll.scroll_vertical)
+	b.pressed.connect(func(): if absi(camp_scroll.scroll_vertical - press_scroll) < 8: main.camp_id = C.id; main.open_brief(i))
+	return b
 
 func _show_next(b: Control) -> void:
 	await get_tree().process_frame
