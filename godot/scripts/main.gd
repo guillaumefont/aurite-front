@@ -213,10 +213,21 @@ func open_brief(i: int) -> void:
 	U.btn.br_text.text = m.brief
 	U.set_brief_heroes(m.heroes, C.fac)
 	U.btn.br_obj.text = "\n".join(m.obj.map(func(o): return "•  " + o))
+	U._seg_pick("level", camp_level())
 	U.show_overlay("brief")
 
 func begin_mission() -> void:
-	play({"mission": D.camp(camp_id).missions[brief_i]})
+	play({"mission": D.camp(camp_id).missions[brief_i], "level": camp_level()})
+
+## Campaign difficulty, kept with the campaign progress.
+func camp_level() -> String:
+	var l: String = str(_camp_file().get("_level", "normal"))
+	return l if D.LEVELS.has(l) else "normal"
+
+func set_camp_level(l: String) -> void:
+	var d := _camp_file(); d["_level"] = l
+	var f := FileAccess.open("user://campaigns.json", FileAccess.WRITE)
+	if f: f.store_string(JSON.stringify(d))
 
 func next_mission() -> void:
 	if brief_i >= D.camp(camp_id).missions.size() - 1 and _sequel(camp_id) != "":

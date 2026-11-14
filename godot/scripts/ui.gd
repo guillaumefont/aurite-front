@@ -490,6 +490,10 @@ func _build_overlays() -> void:
 	var ob := PanelContainer.new(); ob.add_theme_stylebox_override("panel", _left_bar(W_BRASS)); d.add_child(ob)
 	var obv := VBoxContainer.new(); ob.add_child(obv); obv.add_child(eyebrow("Objectives"))
 	btn.br_obj = lbl("", f_body, 14, W_KHAKI); btn.br_obj.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; obv.add_child(btn.br_obj)
+	var lv := HBoxContainer.new(); lv.add_theme_constant_override("separation", 10); d.add_child(lv)
+	var ll := eyebrow("Difficulty", W_SAND); ll.size_flags_vertical = Control.SIZE_SHRINK_CENTER; lv.add_child(ll)
+	var lsg := seg(lv, "level", [["easy", "Easy"], ["normal", "Normal"], ["hard", "Hard"]], "normal", func(l): main.set_camp_level(l))
+	lsg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row = HBoxContainer.new(); row.add_theme_constant_override("separation", 8); d.add_child(row)
 	var go := cta("Begin mission", func(): main.begin_mission()); go.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(go)
 	var bk := ghost("Back", func(): main.show_campaigns(), 52); bk.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(bk)
