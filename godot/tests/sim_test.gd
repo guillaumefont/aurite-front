@@ -70,10 +70,14 @@ func _ready():
 	print("setup ms ", Time.get_ticks_msec() - t0, " ents ", s.ents.size())
 	t0 = Time.get_ticks_msec()
 	var mx := 0
+	var ups := {}   # upgrades either AI made: "team type" -> true
 	for i in 20 * 60 * 15:
 		var a = Time.get_ticks_usec()
 		s.step(0.05)
-		if i % 20 == 0: s.ai_think(s.teams[0])
+		if i % 20 == 0:
+			s.ai_think(s.teams[0])
+			for e in s.ents:
+				if e.alive and e.kind == "b" and e.lv > 1: ups["%d %s" % [e.team, e.type]] = true
 		mx = max(mx, Time.get_ticks_usec() - a)
 		if i % 2400 == 0: print("t=", int(s.time), " ents=", s.ents.size(), " proj=", s.proj.size(), " parts=", s.parts.size(), " worst step us=", mx)
 		if s.over: break
@@ -82,6 +86,9 @@ func _ready():
 	for e in s.ents: c[str(e.team)+e.type] = c.get(str(e.team)+e.type, 0) + 1
 	print(c)
 	print(h.log.slice(-10))
+	print("AI upgrades in the soak: ", ups.keys())
+	if ups.is_empty():
+		print("UPGRADE TEST FAILED: neither skirmish AI upgraded anything"); get_tree().quit(1); return
 	# every mission sets up, runs a minute, and can be won by meeting its goals in order
 	for C in D.CAMPAIGNS:
 		for m in C.missions:
@@ -117,6 +124,7 @@ func _ready():
 	if paced.size():
 		print("FORMATION OFF TEST FAILED"); get_tree().quit(1); return
 	if not choir_tests(s, h): get_tree().quit(1); return
+	if not upgrade_tests(s, h): get_tree().quit(1); return
 	print("SIM TEST DONE")
 	get_tree().quit()
 
@@ -223,4 +231,95 @@ func choir_tests(s, h) -> bool:
 	for i in 20 * 4: s.step(0.05)
 	if s.fields.filter(func(f): return f.r > D.T * 3).is_empty(): return _fail("Chorus Well left no field")
 	print("choir tests ok")
+	return true
+
+func _ufail(msg: String) -> bool:
+	print("UPGRADE TEST FAILED: ", msg); return false
+
+## Building upgrades: cost, requirements, cancel, sell, each effect, and the campaign AI rule (Hard only).
+func upgrade_tests(s, h) -> bool:
+	s.new_game("normal", {"fac": "vanguard", "enemy": "ashen", "seed": 4242})
+	s.teams[1].credits = 0; s.ai_t = 1e9
+	var hq = s.find_hq(0)
+	var pw = s.add_building(0, "power", hq.tx + 4, hq.ty)
+	if s.upg_block(pw) == "": return _ufail("reactor upgrade allowed without a refinery")
+	var rf = s.add_building(0, "refinery", hq.tx - 5, hq.ty + 4)
+	if s.upg_block(pw) != "": return _ufail("reactor upgrade blocked: " + s.upg_block(pw))
+	if s.upg_block(rf) == "": return _ufail("refinery upgrade allowed without a comms array")
+	# cancel refunds what was paid
+	s.teams[0].credits = 5000.0
+	s.start_upgrade(pw)
+	for i in 40: s.step(0.05)
+	if pw.upg <= 0 or s.teams[0].credits >= 5000: return _ufail("upgrade did not start paying")
+	s.cancel_upgrade(pw)
+	if abs(s.teams[0].credits - 5000.0) > 1 or pw.upg >= 0: return _ufail("cancel did not refund")
+	# full reactor upgrade: +150 power, more hp, costs 450, new name
+	var pm0: int = s.teams[0].pmade
+	s.start_upgrade(pw)
+	for i in 20 * 14: s.step(0.05)
+	print("reactor: lv ", pw.lv, " ", pw.d.name, " power ", pm0, " -> ", s.teams[0].pmade, " paid ", int(5000.0 - s.teams[0].credits), " hp ", int(pw.hp), "/", int(pw.max_hp))
+	if pw.lv != 2 or pw.d.name != "Super Reactor" or s.teams[0].pmade != pm0 + 150 or pw.max_hp != 1000: return _ufail("reactor upgrade")
+	if abs((5000.0 - s.teams[0].credits) - 450) > 2: return _ufail("reactor upgrade cost")
+	if s.upg_block(pw) == "" or not s.upg_def(pw).is_empty(): return _ufail("upgraded twice")
+	# selling an upgraded building refunds half of both prices
+	var cr: float = s.teams[0].credits
+	var got: int = s.sell(pw)
+	if got != int((300 + 450) * 0.5): return _ufail("sell refund %d" % got)
+	# barracks: faster training once upgraded
+	s.add_building(0, "factory", hq.tx + 4, hq.ty + 5)
+	var bk = s.add_building(0, "barracks", hq.tx - 4, hq.ty - 4)
+	if s.prod_speed(0, "inf") != 1.0: return _ufail("speed before upgrade")
+	s.finish_upgrade(bk)
+	if abs(s.prod_speed(0, "inf") - 1.35) > 0.001 or s.prod_speed(0, "veh") != 1.0: return _ufail("Drill Hall speed")
+	# sentry: the upgraded def carries the new weapon numbers
+	var tu = s.add_building(0, "turret", hq.tx + 1, hq.ty + 5)
+	s.finish_upgrade(tu)
+	if tu.d.dmg != 44 or tu.d.range != 6.5 or tu.d.weapon != "shell": return _ufail("Heavy Sentry stats")
+	# refinery yield: a full load is worth 25% more
+	var ld := 0.0
+	for k in 2:
+		if k == 1: s.finish_upgrade(rf)
+		var hv = s.spawn_unit(0, "harv", (rf.tx + 1) * D.T + 16, (rf.ty + 3) * D.T + 16)
+		hv.load = 700.0; hv.ref = rf; hv.hs = "unload"; hv.mt = 0.0
+		var c0: float = s.teams[0].credits
+		for i in 20 * 3: s.step(0.05)
+		hv.alive = false
+		var gain: float = s.teams[0].credits - c0
+		print("refinery lv", rf.lv, ": one load gave ", int(gain))
+		if k == 1 and gain < ld * 1.2: return _ufail("Deep Refinery yield")
+		ld = gain
+	# the Choir's garden blooms
+	s.new_game("normal", {"fac": "choir", "enemy": "vanguard", "seed": 4242})
+	s.teams[1].credits = 0; s.ai_t = 1e9
+	hq = s.find_hq(0)
+	var gd = s.add_building(0, "garden", hq.tx + 5, hq.ty + 5)
+	s.add_building(0, "power", hq.tx - 4, hq.ty)
+	var gains := []
+	for k in 2:
+		if k == 1: s.finish_upgrade(gd)
+		gd.gt = 0.0
+		var c0: float = s.teams[0].credits
+		for i in 20 * 8 + 2: s.step(0.05)
+		gains.append(s.teams[0].credits - c0)
+	print("garden: ", gains.map(func(g): return int(g)), " ", gd.d.name)
+	if gains[1] <= gains[0] or gd.d.name != "Bloom Garden": return _ufail("Bloom Garden yield")
+	# campaign AI: never upgrades on Normal, may on Hard
+	var m = null
+	for C in D.CAMPAIGNS:
+		for mm in C.missions:
+			if m == null and mm.aiBuild and mm.ehq == "hq": m = mm
+	for lv in ["normal", "hard"]:
+		s.new_game("normal", {"mission": m, "level": lv})
+		s.teams[1].credits = 50000.0
+		var any := false
+		for i in 20 * 60 * 3:
+			s.step(0.05)
+			if i % 40 == 0:
+				for e in s.ents:
+					if e.alive and e.team == 1 and e.kind == "b" and (e.lv > 1 or e.upg >= 0): any = true
+			if any or s.over: break
+		print("campaign AI on ", lv, " (", m.title, ") upgraded: ", any)
+		if lv == "normal" and any: return _ufail("campaign AI upgraded on Normal")
+		if lv == "hard" and not any: return _ufail("campaign AI never upgraded on Hard")
+	print("upgrade tests ok")
 	return true

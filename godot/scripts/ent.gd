@@ -39,6 +39,10 @@ var end_kind := ""  # "sell" or "die": the view plays a dismantle or collapse be
 var end_t := 0.0
 var out_t := -9.0  # last time a unit rolled out (factory door)
 var unload_t := -9.0  # last time a harvester unloaded here (refinery conveyor)
+var lv := 1            # 2 once upgraded (d is then D.BLD2[type])
+var upg := -1.0        # upgrade progress 0..1 while upgrading, -1 otherwise
+var upaid := 0.0       # aurite paid so far into the running upgrade
+var up_t := -9.0       # when the last upgrade finished (the view plays a reveal)
 
 # units
 var ang := 0.0

@@ -22,6 +22,26 @@ miners and deserters from both sides who stayed too long near raw aurite undergr
   shard field stays for 18 s.
 - Shared types are swapped through `D.sub()` (`garden` for `refinery`, `thrall` for `rifle`, `geode` for `arty`).
 
+## Building upgrades
+Select one of your buildings and press **UPGRADE · cost** (bottom left, next to Repair and Sell). The building keeps
+working while the upgrade is paid and built, under a scaffold with a gold progress bar; tap **UPGRADING n% ✕** to
+cancel and get the aurite back. When it finishes the model changes (gold trim plus the parts below). A dimmed button
+means a requirement is missing; tap it to see which. Same set for every faction (the Choir has the garden instead of
+the refinery):
+
+| Building | Upgrade | Cost / time | Needs | Gives |
+|---|---|---|---|---|
+| Reactor | Super Reactor | 450 / 12 s | Refinery (Garden) | +150 power (250), 1000 hp; taller towers, fusion core |
+| Refinery | Deep Refinery | 1000 / 15 s | Comms Array | +25% aurite per load, 1400 hp; roof derrick, two tanks |
+| Crystal Garden | Bloom Garden | 900 / 14 s | Comms Array | +40% aurite, 1150 hp; crystal spires at the corners |
+| Barracks | Drill Hall | 600 / 10 s | War Factory | infantry trains 35% faster, 950 hp; armoured upper floor |
+| War Factory | Heavy Works | 1200 / 16 s | Comms Array | vehicles build 30% faster, 1500 hp, −40 power; second deck, crane |
+| Sentry Gun | Heavy Sentry | 400 / 8 s | War Factory | 44 damage (30), range 6.5 (6), 750 hp; twin barrels |
+| Flak Nest | Flak Battery | 450 / 8 s | War Factory | 34 damage (24), range 8.5 (7.5), 650 hp; four barrels, radar |
+
+Selling an upgraded building refunds half of both prices. The AI upgrades in skirmish; in the campaigns it only does
+so on Hard, so Easy and Normal play as before.
+
 ## Install on Android
 `build/aurite-front.apk` is a debug-signed APK (package `io.aurite.frontgodot`, arm64 + armv7, Android 6.0+).
 Copy it to the phone and open it (allow "install unknown apps"). It installs next to the older WebView app.
