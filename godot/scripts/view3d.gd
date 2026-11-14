@@ -202,6 +202,7 @@ func _init_batches() -> void:
 		"flame": _batch(ico, _pmat("unshaded, blend_add, depth_draw_never", "ALPHA = 0.8;", false), 300),
 		"missile": _batch(box, _pmat("unshaded", "", false), 60),
 		"rift": _batch(ring, _pmat("unshaded, blend_add, cull_disabled, depth_draw_never", "ALPHA = 0.8;", false), 60),
+		"gem": _batch(_mesh_from("oct"), _pmat("unshaded", "", false), 260),
 		"shadow": _batch(disc, _pmat("unshaded, cull_disabled, depth_draw_never", "ALPHA = 0.28;", false), 80),
 	}
 	batches.shadow.mi.material_override.set_shader_parameter("tint", Color(0, 0, 0))
@@ -210,6 +211,7 @@ func _init_batches() -> void:
 	batches.heal.mi.material_override.set_shader_parameter("tint", Color("8af5a4"))
 	batches.missile.mi.material_override.set_shader_parameter("tint", Color("f2f2ee"))
 	batches.flash.mi.material_override.set_shader_parameter("tint", Color("ffc070"))
+	batches.gem.mi.material_override.set_shader_parameter("tint", Color("ffd25a"))
 
 func _put(b: Dictionary, x: float, y: float, z: float, sx: float, sy: float, sz: float, rx := 0.0, ry := 0.0, rz := 0.0, col := Color(1, 1, 1, 1)) -> void:
 	var n: int = b.n
@@ -448,9 +450,19 @@ func _mk_rec(e: Ent) -> Dictionary:
 	var n := Models.get_model(e.kind, e.type, e.team, fac)
 	ents_root.add_child(n)
 	var r := {"n": n, "team": e.team, "f": 0}
-	for k in ["body", "tur", "flash", "legL", "legR", "orb", "cargo", "scoop", "tube", "spin", "blink", "arm", "tool", "lamp", "lamp2", "rot", "tr", "sel"]:
+	for k in ["body", "tur", "flash", "legL", "legR", "orb", "cargo", "scoop", "tube", "spin", "blink", "arm", "tool", "lamp", "lamp2", "rot", "tr", "sel",
+			"flag", "sock", "holo", "trolley", "door", "dl0", "dl1", "rune"]:
 		var c := n.find_child(k, true, false)
 		if c: r[k] = c
+	if e.kind == "b":
+		for pre in ["fan", "lt", "bl"]:
+			var arr: Array = []
+			for i in 8:
+				var c := n.find_child("%s%d" % [pre, i], true, false)
+				if c == null: break
+				arr.append(c)
+			if arr.size(): r[pre] = arr
+		r.steam = n.get_meta("steam", PackedVector3Array()); r.stacks = n.get_meta("stacks", PackedVector3Array())
 	var rots: Array = []
 	for i in 4:
 		var c := n.find_child("rot%d" % i, true, false)
@@ -503,10 +515,19 @@ func sync_ents(t: float) -> void:
 				var f: float = max(.01, e.load / D.HARV_CAP)
 				r.cargo.scale.y = .2 * f; r.cargo.position.y = .35 + .1 * f
 			if r.has("scoop"): r.scoop.position.y = .1 + sin(t * 20) * .03 if e.hs == "mine" else .1
+			if e.d.get("harv", false) and (e.hs == "mine" or e.hs == "unload") and on_screen(e.x, e.y, 80):
+				var ca: float = cos(e.ang); var sa: float = sin(e.ang); var gh: float = S.h_at(e.x, e.y)
+				if e.hs == "mine" and randf() < .6:
+					S.parts.append({"k": "gem", "x": e.x + ca * 20 + (randf() - .5) * 14, "y": e.y + sa * 20 + (randf() - .5) * 14, "bx": e.x - ca * 4, "by": e.y - sa * 4,
+						"ah": gh + .05, "bh": gh + .62, "life": .5, "max": .5, "s": .065 + randf() * .04})
+				elif e.hs == "unload" and e.ref != null and randf() < .6:
+					S.parts.append({"k": "gem", "x": e.x - ca * 4 + (randf() - .5) * 8, "y": e.y - sa * 4, "bx": e.ref.x + (randf() - .5) * 8, "by": e.ref.y + T * .75,
+						"ah": gh + .6, "bh": S.h_at(e.ref.x, e.ref.y) + .55, "life": .55, "max": .55, "s": .075 + randf() * .04})
 			if r.has("tube"): r.tube.rotation.z = -.9 + (.15 if e.flash > 0 else 0.0)
 		else:
-			var age: float = t - e.born; var k: float = clamp(age / .6, .05, 1.0)
-			r.body.scale.y = 1 - (1 - k) * (1 - k) if k < 1 else 1.0
+			r.e = e
+			_anim_build(e, r, t)
+			_bld_idle(e, r, t)
 			if r.has("tur"): r.tur.rotation.y = -e.tang
 			if r.has("flash"): r.flash.visible = e.flash > 0
 			if r.has("spin"): r.spin.rotation.y = t * ((.6 + e.ch / D.BLD.rift.charge * 2.5) if e.type == "rift" else .9)
@@ -525,9 +546,137 @@ func sync_ents(t: float) -> void:
 				r.lamp.visible = not e.busy; r.lamp2.visible = e.busy
 	var gone: Array = []
 	for id in recs:
-		if recs[id].f != frame_no: gone.append(id)
+		var rec: Dictionary = recs[id]
+		if rec.f == frame_no: continue
+		# sold or destroyed buildings play their dismantle or collapse before the model goes
+		if rec.has("e") and rec.e.end_kind != "" and _anim_end(rec, t):
+			rec.n.visible = rec.e.team == 0 or rec.e.seen
+			continue
+		gone.append(id)
 	for id in gone:
 		recs[id].n.queue_free(); recs.erase(id)
+
+# ---------------- building life: assemble, dismantle, collapse ----------------
+const BUILD_T := 2.2
+const SELL_T := 1.8
+const DIE_T := 1.6
+
+func _prep_life(e: Ent, r: Dictionary) -> void:
+	var inv: Transform3D = (r.n as Node3D).global_transform.affine_inverse()
+	var top := .2; var meshes: Array = []
+	for mi in r.n.find_children("*", "MeshInstance3D", true, false):
+		if r.sel.is_ancestor_of(mi): continue
+		meshes.append(mi)
+		var bb: AABB = (inv * (mi as MeshInstance3D).global_transform) * (mi as MeshInstance3D).get_aabb()
+		top = max(top, bb.end.y)
+	r.top = top; r.meshes = meshes
+	r.scaf = Models.scaffold(e.w, e.h, top); r.scaf.visible = false; r.n.add_child(r.scaf)
+
+func _cut_on(r: Dictionary) -> void:
+	if not r.has("cutm"): r.cutm = Models.cut_material()
+	r.cutm.set_shader_parameter("fog_on", Models.material.get_shader_parameter("fog_on"))
+	for mi in r.meshes: mi.material_override = r.cutm
+
+func _cut_off(r: Dictionary) -> void:
+	for mi in r.meshes: mi.material_override = null
+	r.scaf.visible = false; r.anim = ""
+
+func _life_sparks(e: Ent, r: Dictionary, hgt: float) -> void:
+	var gy: float = r.n.position.y
+	for i in 3:
+		if randf() > .55: continue
+		var edge := randf() < .5
+		var x: float = e.tx * T + ((0.0 if randf() < .5 else e.w * T) if edge else randf() * e.w * T)
+		var y: float = e.ty * T + (randf() * e.h * T if edge else (0.0 if randf() < .5 else e.h * T))
+		S.parts.append({"k": "spark", "x": x, "y": y, "vx": (randf() - .5) * 50, "vy": (randf() - .5) * 50, "life": .25 + randf() * .2, "max": .45,
+			"c": Color("fff3c0") if randf() < .6 else Color("ffb648"), "s": 1.4, "h0": gy + hgt})
+
+func _dust(e: Ent, n: int, c := Color8(196, 184, 156)) -> void:
+	var R: float = max(e.w, e.h) * T * .55
+	for i in n:
+		var a := TAU * i / n
+		S.parts.append({"k": "smoke", "x": e.x + cos(a) * R, "y": e.y + sin(a) * R, "vx": cos(a) * 34, "vy": sin(a) * 34, "life": .7, "max": .7, "s": 3.5, "c": c})
+
+func _anim_build(e: Ent, r: Dictionary, t: float) -> void:
+	var age: float = t - e.born
+	if e.born < -5 or age >= BUILD_T:
+		if r.get("anim", "") == "build": _cut_off(r)
+		return
+	if not r.has("top"): _prep_life(e, r)
+	if r.get("anim", "") != "build": _cut_on(r); r.anim = "build"
+	var p: float = clamp(age / BUILD_T, 0.0, 1.0)
+	var gy: float = r.n.position.y
+	var rise: float = 1.0 - pow(1.0 - p, 1.6)
+	r.cutm.set_shader_parameter("cut_y", gy - 1.0 if age < 0 else gy + (r.top + .08) * rise)
+	r.scaf.visible = age >= 0
+	r.scaf.scale = Vector3(1, max(.001, clamp(age / .25, 0.0, 1.0) * clamp((BUILD_T - age) / .35, 0.0, 1.0)), 1)
+	if age >= 0 and not r.get("dusted", false):
+		r.dusted = true; _dust(e, 12)
+	if age > 0 and frame_no % 2 == 0: _life_sparks(e, r, r.top * rise)
+
+func _anim_end(r: Dictionary, t: float) -> bool:
+	var e: Ent = r.e
+	if not r.has("top"): _prep_life(e, r)
+	var age: float = t - e.end_t
+	r.sel.visible = false
+	if e.end_kind == "sell":
+		if age >= SELL_T: return false
+		if r.get("anim", "") != "sell":
+			_cut_on(r); r.anim = "sell"; _dust(e, 8, Color8(170, 160, 140))
+		var p: float = age / SELL_T; var gy: float = r.n.position.y
+		var down: float = clamp((p - .12) / .8, 0.0, 1.0)
+		r.cutm.set_shader_parameter("cut_y", gy + (r.top + .08) * (1.0 - down * down * (3 - 2 * down)) - .02)
+		r.scaf.visible = true
+		r.scaf.scale = Vector3(1, max(.001, clamp(age / .2, 0.0, 1.0) * clamp((SELL_T - age) / .3, 0.0, 1.0)), 1)
+		if frame_no % 2 == 0: _life_sparks(e, r, r.top * (1.0 - down))
+		return true
+	if age >= DIE_T: return false
+	if not r.has("tilt"): r.tilt = Vector2(randf() - .5, randf() - .5) * .35
+	var k: float = pow(age / DIE_T, 2)
+	r.body.position.y = -r.top * .85 * k
+	r.body.rotation = Vector3(r.tilt.x * k, 0, r.tilt.y * k)
+	if frame_no % 3 == 0:
+		S.parts.append({"k": "smoke", "x": e.tx * T + randf() * e.w * T, "y": e.ty * T + randf() * e.h * T, "vx": (randf() - .5) * 16, "vy": (randf() - .5) * 16,
+			"life": 1.4, "max": 1.4, "s": 7.0, "c": Color8(60, 54, 48)})
+	return true
+
+## Idle life on a finished building: fans, lights, flag, crane, door, conveyor, smoke and steam, repair sparks.
+func _bld_idle(e: Ent, r: Dictionary, t: float) -> void:
+	if r.has("fan"):
+		for f in r.fan: f.rotation.y = t * 9 + e.id
+	var idle: bool = r.get("anim", "") == ""
+	if r.has("lt"):
+		for i in r.lt.size(): r.lt[i].visible = sin(t * 3.2 + i * PI + e.id) > -.2
+	if r.has("flag"): r.flag.rotation.y = sin(t * 2.3 + e.id) * .35
+	if r.has("sock"): r.sock.rotation.y = .6 + sin(t * 1.3 + e.id) * .4
+	if r.has("holo"):
+		r.holo.rotation.y = t * 1.4; r.holo.position.y = 1.15 + sin(t * 2) * .05
+	if r.has("rune"): r.rune.rotation.y = -t * .5
+	if r.has("trolley"): r.trolley.position.x = sin(t * .45 + e.id) * .75
+	var unloading: bool = e.type == "refinery" and t - e.unload_t < .3
+	if r.has("bl"):
+		for i in r.bl.size():
+			var q: float = fmod(t * 1.3 + i / 3.0, 1.0)
+			r.bl[i].visible = unloading
+			r.bl[i].position = Vector3(0, .3 + q * .38, .85 - q * .8)
+	if r.has("door"):
+		var dt: float = t - e.out_t
+		var o: float = clamp(min(dt / .3, (2.2 - dt) / .4), 0.0, 1.0)
+		r.door.position.y = .41 + o * .3; r.door.scale.y = max(.05, 1 - o * .9)
+		for k in ["dl0", "dl1"]:
+			if r.has(k): r[k].visible = sin(t * 14) > 0 if o > 0 else true
+	if not idle: return
+	if frame_no % 14 == e.id % 14 and on_screen(e.x, e.y, 120):
+		var gy: float = r.n.position.y; var ox: float = r.n.position.x * T; var oz: float = r.n.position.z * T
+		for v in r.steam:
+			S.parts.append({"k": "smoke", "x": ox + v.x * T, "y": oz + v.z * T, "vx": 4.0, "vy": -2.0, "life": 1.4, "max": 1.4, "s": 3.2, "c": Color8(215, 222, 226), "h0": gy + v.y})
+		if e.type != "refinery" or unloading or randf() < .4:
+			for v in r.stacks:
+				S.parts.append({"k": "smoke", "x": ox + v.x * T, "y": oz + v.z * T, "vx": 5.0, "vy": -3.0, "life": 1.3, "max": 1.3, "s": 3.0, "c": Color8(105, 100, 94), "h0": gy + v.y})
+	if e.type == "repair" and e.busy and r.has("arm") and frame_no % 2 == 0:
+		var gy: float = r.n.position.y
+		S.parts.append({"k": "spark", "x": (r.n.position.x + r.arm.position.x) * T, "y": (r.n.position.z + .07) * T, "vx": (randf() - .5) * 70, "vy": (randf() - .5) * 70,
+			"life": .3, "max": .3, "c": Color("fff6c8") if randf() < .5 else Color("7fe0ff"), "s": 1.4, "h0": gy + .62})
 
 # ---------------- particles & projectiles ----------------
 func _top_at(x: float, y: float) -> float:
@@ -552,6 +701,10 @@ func draw_parts() -> void:
 		if not p.has("h0"): p.h0 = _top_at(p.x, p.y) if (k == "smoke" or k == "spark") else S.h_at(p.x, p.y)
 		var h0: float = p.h0
 		match k:
+			"gem":
+				var q: float = 1.0 - f; var gx: float = lerpf(p.x, p.bx, q); var gz: float = lerpf(p.y, p.by, q)
+				var hh: float = lerpf(p.ah, p.bh, q) + sin(q * PI) * .35; var s: float = p.s * (1.0 if q < .85 else (1.0 - q) / .15)
+				_put(batches.gem, gx / T, hh, gz / T, s, s * 1.6, s, 0, q * 9, 0)
 			"smoke":
 				var s: float = p.s / T * (1.8 - f) * 1.3; var c: Color = p.c * (.7 + f * .5)
 				_put(batches.smoke, X, h0 + (1 - f) * (.5 + p.s * .08), Z, s, s * .8, s, p.life, p.life * 2, 0, c.srgb_to_linear())

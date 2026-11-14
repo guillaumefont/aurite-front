@@ -688,6 +688,16 @@ func draw_hud(c: Control) -> void:
 			c.draw_rect(Rect2(x - 1, y + 4, w + 2, 4), Color(0, 0, 0, .75)); c.draw_rect(Rect2(x, y + 5, w * e.load / D.HARV_CAP, 2), Color("f0b93f"))
 		if is_b and e.repairing:
 			c.draw_string(U.f_disp7, Vector2(p.x - 5, y - 5 + sin(S.time * 6) * 2), "+", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("7fd68e"))
+	# floating "+N" aurite numbers (refinery deliveries, sales)
+	for p in S.parts:
+		if p.k != "txt": continue
+		var fr: float = p.life / p.max
+		var q: Vector3 = V.w2s(p.x, p.y, S.h_at(p.x, p.y) + p.h + (1 - fr) * .8)
+		if q.z < 0: continue
+		var col: Color = p.c; col.a = min(1.0, fr * 2.2)
+		var tw: float = f.get_string_size(p.txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+		c.draw_string_outline(f, Vector2(q.x - tw / 2, q.y), p.txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 4, Color(0, 0, 0, .7 * col.a))
+		c.draw_string(f, Vector2(q.x - tw / 2, q.y), p.txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, col)
 	if gest != null and gest.mode == "box":
 		var r := Rect2(Vector2(min(gest.s.x, gest.e.x), min(gest.s.y, gest.e.y)), Vector2(abs(gest.e.x - gest.s.x), abs(gest.e.y - gest.s.y)))
 		c.draw_rect(r, Color(.5, .84, .56, .12)); c.draw_rect(r, Color("7fd68e"), false, 1.5)
@@ -802,6 +812,8 @@ func _autotest(dir: String) -> void:
 		await get_tree().create_timer(0.5).timeout
 		await _shot(dir + "/01_brief.png")
 		begin_mission()
+	elif mode == "b":
+		await _bld_test(dir); get_tree().quit(); return
 	else:
 		play({"fac": "vanguard", "diff": "normal"})
 	await get_tree().create_timer(1.0).timeout
@@ -863,6 +875,67 @@ func _menu_shots(dir: String) -> void:
 	S.over = true; end_game(true)
 	await get_tree().create_timer(1.6).timeout
 	await _shot(dir + "/05_end.png")
+
+## AF_MODE=b: every building model, then the build, sell and collapse animations and a harvester at work.
+func _bld_test(dir: String) -> void:
+	play({"fac": OS.get_environment("AF_FAC") if OS.get_environment("AF_FAC") != "" else "vanguard", "diff": "normal"})
+	paused = true
+	var hq: Ent = S.ents.filter(func(e): return e.team == 0 and e.type == "hq")[0]
+	var bs: Array = []
+	for t in ["power", "refinery", "barracks", "factory", "repair", "helipad", "comms", "tech", "turret", "flak", "bastion", "pylon", "skyfall", "rift"]:
+		var bf: String = D.BLD[t].get("fac", "")
+		if bf != "" and bf != S.teams[0].fac: continue
+		var sp = S.ai_spot(0, t, hq)
+		if sp == null: continue
+		var b := S.add_building(0, t, sp.x, sp.y); b.born = -9.0; bs.append(b)
+		S.update_vision()
+	S.update_vision(); V.fog_clear(true)
+	await get_tree().create_timer(.5).timeout
+	for b in [hq] + bs:
+		V.cam_z = 2.4; V.center_on(b.x, b.y)
+		await get_tree().create_timer(.25).timeout
+		await _shot(dir + "/b_%s.png" % b.type)
+	var f: Ent = bs.filter(func(e): return e.type == "factory")[0]
+	V.cam_z = 1.9; V.center_on(f.x, f.y)
+	for k in [.15, .4, .7, .95]:
+		f.born = S.time - k * 2.2
+		await get_tree().create_timer(.15).timeout
+		await _shot(dir + "/build_%d.png" % int(k * 100))
+	f.born = -9.0
+	S.produce_done(S.teams[0], "tank"); S.time += .5
+	await get_tree().create_timer(.3).timeout
+	await _shot(dir + "/door.png")
+	var ref := S.sell(f)
+	print("BLDTEST sold for ", ref)
+	for k in 3:
+		S.time += .5
+		await get_tree().create_timer(.3).timeout
+		await _shot(dir + "/sell_%d.png" % k)
+	var p: Ent = bs.filter(func(e): return e.type == "power")[0]
+	V.center_on(p.x, p.y)
+	S.kill(p)
+	for k in 3:
+		S.time += .45
+		await get_tree().create_timer(.3).timeout
+		await _shot(dir + "/die_%d.png" % k)
+	paused = false
+	var hv = null
+	for e in S.ents:
+		if e.alive and e.type == "harv": hv = e
+	for i in 20 * 40:
+		S.step(.05)
+		if hv.hs == "mine": break
+	V.cam_z = 2.2; V.center_on(hv.x, hv.y)
+	await get_tree().create_timer(.6).timeout
+	await _shot(dir + "/mine.png")
+	hv.load = D.HARV_CAP
+	for i in 20 * 60:
+		S.step(.05)
+		if hv.hs == "unload": break
+	V.center_on(hv.x, hv.y - 20)
+	await get_tree().create_timer(.7).timeout
+	await _shot(dir + "/unload.png")
+	print("BLDTEST done hs=", hv.hs, " parts=", S.parts.size())
 
 func _shot(path: String) -> void:
 	await RenderingServer.frame_post_draw

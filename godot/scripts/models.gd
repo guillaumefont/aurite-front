@@ -21,8 +21,37 @@ void fragment() {
 }
 """
 
+## Same look as LIT_SHADER, but everything above cut_y (world height) is cut away and a hot seam glows at the cut.
+## Used only while a building is being assembled or dismantled.
+const CUT_SHADER := """
+shader_type spatial;
+render_mode diffuse_lambert, specular_disabled, cull_disabled;
+uniform sampler2D fog_tex : filter_linear, repeat_disable;
+uniform float fog_on = 1.0;
+uniform float cut_y = 100.0;
+void fragment() {
+	vec3 wp = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	if (wp.y > cut_y) discard;
+	float f = mix(1.0, texture(fog_tex, wp.xz / 64.0).r, fog_on);
+	float seam = 1.0 - smoothstep(0.0, 0.045, cut_y - wp.y);
+	ALBEDO = mix(COLOR.rgb * COLOR.a, vec3(0.0), seam * 0.6) * f;
+	EMISSION = (COLOR.rgb * (1.0 - COLOR.a) + vec3(1.0, 0.5, 0.12) * seam * 0.85) * f;
+}
+"""
+static var cut_shader: Shader
+static var fog_texture: Texture2D
+
+static func cut_material() -> ShaderMaterial:
+	if cut_shader == null:
+		cut_shader = Shader.new(); cut_shader.code = CUT_SHADER
+	var m := ShaderMaterial.new(); m.shader = cut_shader
+	m.set_shader_parameter("fog_tex", fog_texture)
+	m.set_shader_parameter("fog_on", material.get_shader_parameter("fog_on") if material.get_shader_parameter("fog_on") != null else 1.0)
+	return m
+
 static func init_materials(fog_tex: Texture2D) -> void:
 	var sh := Shader.new(); sh.code = LIT_SHADER
+	fog_texture = fog_tex
 	material = ShaderMaterial.new(); material.shader = sh
 	material.set_shader_parameter("fog_tex", fog_tex)
 	ghost_ok = _ghost_mat(Color(0.5, 0.84, 0.56, 0.45))
@@ -50,6 +79,7 @@ static var MAT := {
 	"ashM": lit("4a4644"), "ashM2": lit("353231"), "ashC": lit("55524f"), "arc": unlit("b88cff"), "orange": lit("d9772b"),
 	"rotor": lit("1c1e1f"), "hmark": lit("e6e2d0"), "glowC": unlit("9ff3ff"),
 	"heal": unlit("8af5a4"), "fire": unlit("ffa040"), "arcF": unlit("d9c2ff"), "flash": unlit("fff0a0"),
+	"winLit": lit("ffd890", 0.55), "sandbag": lit("a8946a"), "pipe": lit("7b868c"), "scaf": lit("d9a92e"), "stripe": lit("26292a"), "tank": lit("b8bdb8"),
 }
 
 # ---------------- geometry primitives (unit sized, centred) ----------------
@@ -187,6 +217,54 @@ class Builder:
 		box(col, ln, .012, .05, 0, 0, 0, g); box(col, .05, .012, ln, 0, 0, 0, g)
 		nshadow[g] = true
 		return g
+
+	# ---- detail kit for buildings ----
+	var nfan := 0
+	var nlt := 0
+	func pipe(c: Color, a: Vector3, b: Vector3, rad: float, par: Node3D) -> void:
+		var dv := b - a; var L := dv.length()
+		if L < 1e-4: return
+		var dn := dv / L
+		var rb := Basis.from_euler(Vector3(PI, 0, 0)) if dn.dot(Vector3.UP) < -0.999 else Basis(Quaternion(Vector3.UP, dn))
+		var bs := rb * Basis.from_scale(Vector3(rad, L, rad))
+		add("cyl", {"rt": 1.0, "seg": 6}, c, par, Transform3D(bs, (a + b) / 2))
+	func rail(par: Node3D, pts: Array, y: float, hg: float) -> void:
+		var c: Color = Models.MAT.pipe
+		for i in pts.size() - 1:
+			var a: Vector2 = pts[i]; var b: Vector2 = pts[i + 1]
+			pipe(c, Vector3(a.x, y + hg, a.y), Vector3(b.x, y + hg, b.y), .012, par)
+			var n: int = max(1, roundi(a.distance_to(b) / .35))
+			for k in n + 1:
+				if k == n and i < pts.size() - 2: continue
+				var q := a.lerp(b, float(k) / n)
+				box(c, .025, hg, .025, q.x, y + hg / 2, q.y, par)
+	func windows(par: Node3D, x0: float, x1: float, y: float, z: float, n: int, ws: float, hs: float, along_z := false) -> void:
+		for k in n:
+			var f := float(k) / (n - 1) if n > 1 else .5
+			var p := lerpf(x0, x1, f)
+			if along_z: box(Models.MAT.winLit, .02, hs, ws, z, y, p, par)
+			else: box(Models.MAT.winLit, ws, hs, .02, p, y, z, par)
+	func fan(par: Node3D, x: float, y: float, z: float, sz: float) -> void:
+		box(Models.MAT.dark, sz, sz * .5, sz, x, y, z, par)
+		var f := grp(par, "fan%d" % nfan, Vector3(x, y + sz * .26, z)); nfan += 1
+		box(Models.MAT.metal2, sz * .85, .012, sz * .14, 0, 0, 0, f); box(Models.MAT.metal2, sz * .14, .012, sz * .85, 0, 0, 0, f)
+	func lamp(par: Node3D, x: float, y: float, z: float, c: Color) -> void:
+		var l := solo("lt%d" % nlt, par, x, y, z); nlt += 1
+		ico(c, .035, 0, 0, 0, l); nshadow[l] = true
+	func crate(par: Node3D, x: float, z: float, sz: float) -> void:
+		box(Models.MAT.olive2, sz, sz, sz, x, .12 + sz / 2, z, par); box(Models.MAT.dark, sz * 1.02, sz * .12, sz * 1.02, x, .12 + sz * .55, z, par)
+	func bags(par: Node3D, cx: float, cz: float, rad: float, a0: float, a1: float, n: int) -> void:
+		for k in n:
+			var a := lerpf(a0, a1, float(k) / (n - 1) if n > 1 else .5)
+			box(Models.MAT.sandbag, .16, .08, .09, cx + cos(a) * rad, .16, cz + sin(a) * rad, par, Vector3(0, -a + PI / 2, 0))
+			if k % 2 == 0: box(Models.MAT.sandbag, .15, .07, .085, cx + cos(a + .12) * rad, .235, cz + sin(a + .12) * rad, par, Vector3(0, -a + PI / 2, 0))
+	func stripes(par: Node3D, x: float, z: float, ln: float, y: float, along_z := false) -> void:
+		var n: int = max(2, roundi(ln / .14))
+		for k in n:
+			var f := (k + .5) / n - .5
+			var c: Color = Models.MAT.stripe if k % 2 else Models.MAT.gold
+			if along_z: box(c, .06, .012, ln / n, x, y, z + f * ln, par)
+			else: box(c, ln / n, .012, .06, x + f * ln, y, z, par)
 
 	func finish() -> Node3D:
 		for n in bufs:
@@ -430,9 +508,132 @@ static func bld_model(type: String, team: int, fac: String) -> Node3D:
 			var orb := B.solo("orb", body, 0, 1.25, 0); B.ico(M.arc, 1, 0, 0, 0, orb); orb.scale = Vector3.ONE * .32; B.nshadow[orb] = true
 	if not ["wall", "turret", "flak", "pylon", "helipad"].has(type):
 		B.cyl(M.dark, .025, .025, .5, 4, -w / 2 + .18, .37, -h / 2 + .18, body); B.box(tm.col, .24, .14, .02, -w / 2 + .31, .55, -h / 2 + .18, body)
+	_detail(B, type, body, g)
 	# selection outline
 	var sel := B.grp(g, "sel", Vector3(0, .16, 0)); sel.visible = false; B.nshadow[sel] = true
 	var gc := Color(0.5, 0.84, 0.56, 0); var hw := w / 2 + .06; var hh := h / 2 + .06
 	B.box(gc, hw * 2, .02, .04, 0, 0, -hh, sel); B.box(gc, hw * 2, .02, .04, 0, 0, hh, sel)
 	B.box(gc, .04, .02, hh * 2, -hw, 0, 0, sel); B.box(gc, .04, .02, hh * 2, hw, 0, 0, sel)
 	return B.finish()
+
+
+## Extra low-poly detail layered on each base building (windows, rails, pipes, fans, lamps, sandbags, crane, flag).
+## Animated parts are named groups: fan<i>, lt<i>, flag, sock, holo, trolley, door, dl0/dl1, glow, bl0..bl2.
+## Smoke and steam vents are stored as metadata ("steam", "stacks") in model space.
+static func _detail(B: Builder, type: String, body: Node3D, root: Node3D) -> void:
+	var M := MAT; var tm := B.tm; var P := B.P
+	var steam := PackedVector3Array(); var stacks := PackedVector3Array()
+	match type:
+		"hq":
+			B.windows(body, -1.1, .8, .62, .21, 6, .18, .14); B.windows(body, -1.15, 0.0, .62, -1.31, 4, .18, .14)
+			B.box(M.dark, .42, .42, .04, -.15, .33, .22, body); B.box(tm.col, .6, .04, .22, -.15, .58, .32, body); B.lamp(body, -.15, .52, .24, M.goldGlow)
+			B.rail(body, [Vector2(1.0, .18), Vector2(1.0, -1.28), Vector2(.1, -1.28)], .9, .12)
+			B.rail(body, [Vector2(-1.28, -1.28), Vector2(-1.28, .18), Vector2(1.0, .18)], .9, .12)
+			B.fan(body, .55, .98, -.95, .24); B.fan(body, .2, .98, -.95, .24)
+			B.cyl(M.dark, .025, .035, .95, 5, -1.12, 1.4, -1.12, body)
+			for y in [1.55, 1.7]: B.box(P.metal, .3, .02, .02, -1.12, y, -1.12, body)
+			B.lamp(body, -1.12, 1.9, -1.12, M.redLight)
+			B.pipe(M.pipe, Vector3(-1.3, .3, -1.0), Vector3(-1.3, .3, .1), .04, body); B.pipe(M.pipe, Vector3(-1.3, .3, .1), Vector3(-1.3, .12, .1), .04, body)
+			B.crate(body, 1.15, .3, .2); B.crate(body, 1.2, .05, .16); B.crate(body, .98, .42, .14)
+			for z in [.55, 1.15]: B.stripes(body, 0, z, 1.6, .15)
+		"power":
+			for t in [[-.4, -.35, .36, .62], [.42, .4, .31, .52]]:
+				B.cyl(tm.col, t[2] + .01, t[2] + .01, .05, 7, t[0], t[3], t[1], body); B.cyl(M.pipe, t[2] + .06, t[2] + .06, .025, 7, t[0], t[3] + .28, t[1], body)
+				steam.append(Vector3(t[0], t[3] + .62, t[1]))
+			B.pipe(M.pipe, Vector3(-.15, .3, -.35), Vector3(.25, .3, -.45), .05, body); B.pipe(M.pipe, Vector3(.42, .2, .15), Vector3(.42, .2, -.25), .05, body)
+			for x in [.3, .45, .6]:
+				B.cyl(M.white, .025, .04, .14, 6, x, .57, -.45, body); B.ico(M.dark, .03, x, .66, -.45, body)
+			B.fan(body, -.4, .43, .45, .28); B.lamp(body, .7, .55, -.7, M.redLight)
+			B.stripes(body, 0, .9, 1.8, .125); B.stripes(body, -.9, 0, 1.8, .125, true)
+		"refinery":
+			B.windows(body, -1.2, -.05, .55, .11, 4, .16, .12)
+			B.box(M.dark, .34, .04, .9, 0, .42, .45, body, Vector3(.42, 0, 0))
+			for x in [-.2, .2]: B.box(P.metal2, .04, .06, .95, x, .46, .45, body, Vector3(.42, 0, 0))
+			for k in 3:
+				var bl := B.solo("bl%d" % k, body, 0, .5, .45); B.ico(M.goldGlow, .05, 0, 0, 0, bl, Vector3(1, .7, 1)); bl.visible = false; B.nshadow[bl] = true
+			B.cone(M.metal2, 6, .3, .28, .3, 0, .42, .85, body, Vector3(PI, 0, 0))
+			for x in [-.25, .25]: B.box(M.dark, .04, .25, .04, x, .25, .85, body)
+			for k in 6: B.box(M.dark, .02, .02, .1, 1.32, .2 + k * .15, -.6, body)
+			for z in [-.66, -.54]: B.box(M.dark, .02, .9, .02, 1.33, .6, z, body)
+			for y in [.35, .85]: B.cyl(tm.col, .565, .565, .04, 8, .8, y, -.6, body)
+			B.pipe(M.pipe, Vector3(.25, .75, -.45), Vector3(.15, .75, -.45), .05, body); B.pipe(M.pipe, Vector3(.3, .3, -.2), Vector3(.3, .3, .2), .04, body)
+			B.cyl(P.metal2, .09, .11, .7, 6, -1.1, 1.15, -1.05, body); B.cyl(M.dark, .1, .1, .04, 6, -1.1, 1.5, -1.05, body); stacks.append(Vector3(-1.1, 1.55, -1.05))
+			B.lamp(body, .3, .18, 1.3, M.goldGlow); B.lamp(body, -.3, .18, 1.3, M.goldGlow)
+		"barracks":
+			B.windows(body, -.6, .6, .42, .555, 2, .2, .13); B.windows(body, -.5, .3, .42, -.8, 2, .16, .13, true); B.windows(body, -.5, .3, .42, .8, 2, .16, .13, true)
+			B.lamp(body, 0, .5, .6, M.goldGlow); B.bags(body, 0, .66, .35, .35, 2.8, 7)
+			B.cyl(M.dark, .015, .015, 1.1, 4, .78, .67, .78, body)
+			var fl := B.grp(body, "flag", Vector3(.78, 1.14, .78)); B.box(tm.col, .32, .16, .012, .17, 0, 0, fl); B.box(tm.dk, .32, .04, .014, .17, -.05, 0, fl)
+			B.cyl(P.metal2, .05, .06, .35, 5, -.5, .95, -.4, body); stacks.append(Vector3(-.5, 1.15, -.4))
+			B.crate(body, -.75, .75, .16); B.crate(body, -.55, .8, .13)
+		"factory":
+			var dr := B.solo("door", body, 0, .41, .635); B.box(P.metal2, 1.36, .6, .035, 0, 0, 0, dr)
+			for k in 5: B.box(M.dark, 1.36, .012, .04, 0, -.24 + k * .12, .01, dr)
+			var l0 := B.solo("dl0", body, -.78, .68, .64); B.ico(M.goldGlow, .035, 0, 0, 0, l0); B.nshadow[l0] = true
+			var l1 := B.solo("dl1", body, .78, .68, .64); B.ico(M.goldGlow, .035, 0, 0, 0, l1); B.nshadow[l1] = true
+			for x in [-.9, -.55]:
+				B.cyl(P.metal2, .08, .1, .65, 6, x, 1.3, -1.1, body); stacks.append(Vector3(x, 1.65, -1.1))
+			for x in [.3, .75]: B.fan(body, x, 1.1, -.75, .26)
+			B.windows(body, -1.31, .3, .6, -1.2, 4, .16, .12, true)
+			var gy := 1.15
+			for x in [-.85, .85]: B.box(M.scaf, .07, gy, .07, x, gy / 2 + .12, 1.38, body)
+			B.box(M.scaf, 1.82, .08, .08, 0, gy + .12, 1.38, body)
+			var tr := B.grp(body, "trolley", Vector3(0, gy + .08, 1.38)); B.box(M.dark, .16, .08, .14, 0, 0, 0, tr); B.box(M.dark, .01, .4, .01, 0, -.22, 0, tr); B.box(M.gold, .1, .04, .1, 0, -.42, 0, tr)
+			B.stripes(body, 0, 1.42, 1.6, .142)
+		"turret", "flak":
+			B.bags(body, 0, 0, .44, 0, TAU * .92, 10); B.crate(body, .36, .36, .12)
+		"bastion":
+			B.bags(body, 0, 0, 1.0, .3, TAU * .85, 16); B.crate(body, .8, .8, .14); B.crate(body, -.82, .78, .12); B.lamp(body, 0, .62, .88, M.redLight)
+		"repair":
+			for x in [-1.25, 1.25]:
+				B.box(M.olive2, .18, .4, .5, x, .32, .15, body); B.box(M.gold, .19, .03, .51, x, .4, .15, body)
+			B.pipe(M.dark, Vector3(-1.15, .2, .4), Vector3(-.6, .15, .9), .02, body); B.pipe(M.dark, Vector3(1.15, .2, .4), Vector3(.6, .15, .9), .02, body)
+			B.lamp(body, -1.05, 1.2, .75, M.goldGlow); B.lamp(body, 1.05, 1.2, .75, M.goldGlow)
+			B.stripes(body, -1.1, .15, 1.9, .15, true); B.stripes(body, 1.1, .15, 1.9, .15, true)
+		"comms":
+			B.windows(body, -.7, -.1, .36, .66, 3, .12, .1); B.fan(body, -.6, .6, .25, .2)
+			for a in [-.4, .4]: B.pipe(M.dark, Vector3(.45, 1.9, -.25), Vector3(.45 + a * 1.4, .15, -.25 + (.3 if a > 0 else -.3)), .008, body)
+		"helipad":
+			B.cyl(M.dark, .015, .015, .6, 4, -.82, .4, .82, body)
+			var ws := B.grp(body, "sock", Vector3(-.82, .66, .82)); B.cone(M.gold, 6, .06, .28, .06, .15, 0, 0, ws, Vector3(0, 0, PI / 2))
+			B.cyl(M.tank, .16, .16, .28, 8, .72, .22, .72, body); B.cyl(M.redLight, .165, .165, .04, 8, .72, .26, .72, body)
+			B.pipe(M.dark, Vector3(.6, .15, .6), Vector3(.3, .1, .3), .015, body)
+		"tech":
+			var hl := B.grp(body, "holo", Vector3(-.15, 1.15, -.35)); B.nshadow[hl] = true
+			var hr := B.grp(hl, "holoring", Vector3.ZERO, Vector3(PI / 2, 0, 0)); B.torus(M.cyan, .32, .025, 4, 14, hr); B.nshadow[hr] = true
+			B.ico(M.cyan, .07, 0, 0, 0, hl)
+			B.cyl(M.dark, .015, .02, .6, 4, .55, 1.1, -.45, body); B.fan(body, .4, .7, .6, .22); B.fan(body, -.4, .7, .6, .22)
+			B.windows(body, -.7, .7, .4, .81, 4, .2, .1)
+		"skyfall":
+			B.rail(body, [Vector2(-1.25, .95), Vector2(-1.25, -1.25), Vector2(1.25, -1.25), Vector2(1.25, .95)], .66, .1)
+			B.box(P.metal2, .5, .4, .4, 1.05, .85, .85, body); B.windows(body, .9, 1.2, .88, 1.06, 2, .1, .1)
+			B.lamp(body, -1.2, .85, -1.2, M.redLight); B.lamp(body, 1.2, .85, -1.2, M.redLight)
+		"rift":
+			for x in [-1, 1]: B.pipe(M.arc, Vector3(x * 1.05, 1.5, 0), Vector3(x * .35, 1.25, 0), .03, body)
+			var rn := B.grp(body, "rune", Vector3(0, .41, 0)); _ring(B, rn, .78, .95, M.cyan); B.nshadow[rn] = true
+		"pylon":
+			for k in 3:
+				var a := k * TAU / 3
+				B.pipe(M.dark, Vector3(cos(a) * .3, .12, sin(a) * .3), Vector3(cos(a) * .08, .5, sin(a) * .08), .015, body)
+	if steam.size(): root.set_meta("steam", steam)
+	if stacks.size(): root.set_meta("stacks", stacks)
+
+## Yellow scaffold around a footprint, shown while a building is assembled or dismantled.
+static func scaffold(w: int, h: int, top: float) -> Node3D:
+	var key := "scaf%d_%d_%d" % [w, h, int(top * 10)]
+	if not cache.has(key):
+		var B := Builder.new(0, "vanguard"); var c: Color = MAT.scaf
+		var g := B.grp(B.root, "scaf"); B.nshadow[g] = true
+		var hw := w / 2.0 + .05; var hh := h / 2.0 + .05; var H := top + .12
+		for p in [[-hw, -hh], [hw, -hh], [-hw, hh], [hw, hh], [0, -hh], [0, hh], [-hw, 0], [hw, 0]]: B.box(c, .035, H, .035, p[0], H / 2, p[1], g)
+		var y := .35
+		while y < H:
+			B.box(c, hw * 2, .025, .025, 0, y, -hh, g); B.box(c, hw * 2, .025, .025, 0, y, hh, g)
+			B.box(c, .025, .025, hh * 2, -hw, y, 0, g); B.box(c, .025, .025, hh * 2, hw, y, 0, g)
+			y += .35
+		y = .7
+		while y < H:
+			B.box(c, sqrt(hw * hw * 4 + .35 * .35), .02, .02, 0, y - .17, hh, g, Vector3(0, 0, atan2(.35, hw * 2)))
+			y += .7
+		cache[key] = B.finish()
+	return cache[key].duplicate()
