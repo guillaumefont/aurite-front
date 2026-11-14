@@ -18,6 +18,15 @@ func solve(s, h) -> bool:
 		var g0: int = s.gi
 		for e in s.ents:
 			if e.team == 0 and e.kind == "u": e.hp = e.max_hp   # keep heroes alive while we cheat
+		# a goal with a wave plan really sends enemies (no cheating): jump to the next wave and let it land
+		if g.waves != null:
+			var before: int = s.nid
+			s.g_t0 = s.time - g.waves.first - s.wst.get("wn", 0) * g.waves.every - 0.5
+			for i in 40: s.step(0.05)
+			var spawned: Array = s.ents.filter(func(e): return e.id >= before and e.team == 1 and e.kind == "u")
+			print("   ", g.k, " wave ", s.wst.get("wn", 0), ": ", spawned.size(), " enemy units")
+			if spawned.size() < 2:
+				print("  no wave arrived"); return false
 		match g.k:
 			"destroy_all":
 				for e in s.ents.duplicate():

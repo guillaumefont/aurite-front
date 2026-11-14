@@ -105,7 +105,11 @@ func end_game(win: bool) -> void:
 	U.btn.end_why.text = S.end_why if (M and not win) else ""
 	U.btn.end_why.visible = U.btn.end_why.text != ""
 	if M and win: camp_save(M.camp, M.idx)
-	U.btn.next.visible = M != null and win and M.idx < D.camp(M.camp).missions.size() - 1
+	var last: bool = M != null and M.idx == D.camp(M.camp).missions.size() - 1
+	var sequel := _sequel(M.camp) if M else ""
+	U.btn.next.visible = M != null and win and (not last or sequel != "")
+	U.btn.next.text = ("BEGIN " + D.camp(sequel).name.to_upper()) if (last and sequel != "") else "NEXT MISSION"
+	if last and win and sequel != "": toast("Campaign complete. %s is unlocked" % D.camp(sequel).name, "gold")
 	U.btn.again.text = ("REPLAY" if win else "RETRY") if M else "PLAY AGAIN"
 	A.music_stop()
 	U.set_end_stats([["Time", D.fmt(S.time)], ["Aurite mined", Sim._thousands(S.stats.mined)], ["Units trained", S.stats.built], ["Enemies destroyed", S.stats.killed], ["Losses", S.stats.lost]])
@@ -129,11 +133,27 @@ func camp_save(id: String, i: int) -> void:
 	var f := FileAccess.open("user://campaigns.json", FileAccess.WRITE)
 	if f: f.store_string(JSON.stringify(d))
 
+## The campaign that follows this one in the story, or "".
+func _sequel(id: String) -> String:
+	for i in D.CAMPAIGNS.size() - 1:
+		if D.CAMPAIGNS[i].id == id: return D.CAMPAIGNS[i + 1].id
+	return ""
+
+## A campaign opens once the one before it is finished.
+func camp_open(id: String) -> bool:
+	for i in range(1, D.CAMPAIGNS.size()):
+		if D.CAMPAIGNS[i].id == id:
+			var prev: Dictionary = D.CAMPAIGNS[i - 1]
+			return camp_open(prev.id) and camp_prog(prev.id) >= prev.missions.size()
+	return true
+
 func pick_campaign(id: String) -> void:
 	camp_id = id
-	U.render_missions(D.camp(id), camp_prog(id))
+	U.render_missions(D.camp(id), camp_prog(id) if camp_open(id) else -1)
 
 func show_start() -> void:
+	if not camp_open(camp_id): camp_id = D.CAMPAIGNS[0].id
+	U.set_camp_locks(func(id): return camp_open(id))
 	U.render_missions(D.camp(camp_id), camp_prog(camp_id))
 	U.show_overlay("start")
 	paused = true
@@ -155,7 +175,12 @@ func begin_mission() -> void:
 	play({"mission": D.camp(camp_id).missions[brief_i]})
 
 func next_mission() -> void:
+	if brief_i >= D.camp(camp_id).missions.size() - 1 and _sequel(camp_id) != "":
+		camp_id = _sequel(camp_id); U.set_camp_locks(func(id): return camp_open(id)); _sel_camp_ui(); open_brief(0); return
 	open_brief(min(D.camp(camp_id).missions.size() - 1, brief_i + 1))
+
+func _sel_camp_ui() -> void:
+	U.render_missions(D.camp(camp_id), camp_prog(camp_id))
 
 func play(opt: Dictionary) -> void:
 	last_opt = opt
@@ -960,7 +985,7 @@ func _menu_shots(dir: String) -> void:
 ## AF_MODE=camp: the campaign menu, then every mission's briefing and its opening view, zoomed out.
 func _camp_shots(dir: String) -> void:
 	for C in D.CAMPAIGNS:
-		pick_campaign(C.id)
+		show_start(); pick_campaign(C.id)
 		await get_tree().create_timer(0.4).timeout
 		await _shot(dir + "/%s_menu.png" % C.id)
 		for i in C.missions.size():

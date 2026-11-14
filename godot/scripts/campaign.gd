@@ -18,7 +18,7 @@ static func all() -> Array:
 		{"id": "ashen", "fac": "ashen", "num": "I", "name": "Embers of the Pact",
 		 "tag": "Play the Ashen Pact. The Vanguard lands in the Sable valley and the foundry towns rise.", "missions": ashen()},
 		{"id": "vanguard", "fac": "vanguard", "num": "II", "name": "Iron Tide",
-		 "tag": "Play the Vanguard, a year on. The Directorate returns to break the Pact and its Rift Engines.", "missions": vanguard()},
+		 "tag": "The sequel. A year after Embers, the Directorate returns to break the Pact and its new Rift Engines. Play the Vanguard.", "missions": vanguard()},
 	]
 
 static func _plus(a: Array, b: Array) -> Array:
@@ -192,7 +192,7 @@ static func vanguard() -> Array:
 		# ---- 1: land, set up, silence the shore guns
 		{"title": "Second Landfall", "tag": "Silence the shore guns", "seed": 2101, "diff": "easy", "credits": [0, 3000],
 		 "theatre": "Gull Strand, south coast of the valley · morning",
-		 "brief": "A year ago the Pact threw us into the sea. The Directorate is back, with Captain Ilse Harrow leading the first wave. Get ashore, secure the landing zone so the barges can drop a Command Yard, then knock out the Pact shore guns before they sink the rest of the fleet.",
+		 "brief": "A year ago the Pact burned our Skyfall at Sable Mouth and threw us into the sea. Since then they have built Rift Engines, and the Directorate is back, with Captain Ilse Harrow leading the first wave. Get ashore, secure the landing zone so the barges can drop a Command Yard, then knock out the Pact shore guns before they sink the rest of the fleet.",
 		 "obj": ["Reach the landing zone", "Destroy the four Pact shore guns", "Ilse Harrow must survive", "Hero: Ilse Harrow's rail rifle cuts through infantry and cracks walls"],
 		 "heroes": ["harrow"],
 		 "map": {"theme": "temperate", "p0": [10, 55], "e0": [50, 12], "rock": 0.74, "sea": {"edge": "s", "d": 4},

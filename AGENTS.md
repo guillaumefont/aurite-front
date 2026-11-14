@@ -69,7 +69,10 @@ godot --headless tests/sim_test.tscn   # must end with SIM TEST DONE and no SCRI
 - `tests/sim_test.gd` sets up every mission, runs it a minute, then wins it goal by goal by cheating (`solve()`).
   Add a branch there for any new goal kind.
 - `AF_MODE=camp AF_SHOT=<dir>` shoots the campaign menu, every briefing, every opening view and a wide map view.
-- Progress is saved per campaign in `user://campaigns.json`.
+- Progress is saved per campaign in `user://campaigns.json`. Campaign II (the story sequel) stays locked until campaign I is won
+  (Guillaume, 2026-11-14); `main.camp_open()`.
+- Wave plans spawn the units they name whatever the mission's `aiTech` says (it is often empty). The test jumps to
+  each wave of a wave goal and checks enemies really arrive.
 
 ## Audio and UI on phones
 

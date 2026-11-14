@@ -1676,7 +1676,9 @@ func do_waves(W: Dictionary, t: float) -> void:
 	for row in W.list:
 		if wn < row[3]: continue
 		var n := int(row[1] + row[2] * (wn - row[3]))
-		if n > 0 and avail(1, row[0]): list.append([row[0], n])
+		# wave plans name their units outright: only the faction matters, not the AI's build list (often empty)
+		var wf: String = D.def_of(row[0]).fac
+		if n > 0 and (wf == "" or wf == teams[1].fac): list.append([row[0], n])
 	if list.is_empty(): return
 	var us := squad(1, list, fr[0], fr[1])
 	send_group(us, W.get("to", "base"))
