@@ -131,6 +131,8 @@ func _build_hud() -> void:
 	bar.add_child(power_bar); power_box.get_child(0).add_child(bar)
 	sw_box = _pill(top, "SKYFALL"); sw_name = sw_box.get_child(0).get_child(0); sw_time = lbl("0:00", f_disp, 16, Color("ffd0cc")); sw_box.get_child(0).add_child(sw_time); sw_box.visible = false
 	var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL; sp.mouse_filter = Control.MOUSE_FILTER_IGNORE; top.add_child(sp)
+	# hides the side panel (build menu + minimap) for a wider view; stays in the top bar either way
+	var pb := mkbtn("»", func(): main.toggle_panel(), 44, 44, 16); top.add_child(pb); btn["panel"] = pb
 	var mb := mkbtn("II", func(): main.open_menu(), 44, 44, 16); top.add_child(mb)
 	obj_box = PanelContainer.new(); obj_box.position = Vector2(8, 66); obj_box.custom_minimum_size = Vector2(300, 0); obj_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	obj_box.add_theme_stylebox_override("panel", _left_bar(C_AUR))
@@ -296,9 +298,7 @@ var ins_b := 0.0
 ## Safe-area insets in UI units: HUD, side panel content and menu cards move in; backgrounds still bleed.
 func set_insets(l: float, t: float, r: float, b: float) -> void:
 	ins_l = l; ins_t = t; ins_r = r; ins_b = b
-	hud.offset_left = l; hud.offset_top = t; hud.offset_right = -PANEL_W - r; hud.offset_bottom = -b
-	var dr: Control = hud.get_meta("draw")
-	dr.offset_left = -l; dr.offset_top = -t; dr.offset_right = PANEL_W + r; dr.offset_bottom = b
+	_place_hud()
 	panel.offset_left = -PANEL_W - r
 	var ps := sb(C_PANEL, C_LINE, 0, 0, 8)
 	ps.content_margin_right = 8 + r; ps.content_margin_top = 8 + t; ps.content_margin_bottom = 8 + b
@@ -310,6 +310,25 @@ func set_insets(l: float, t: float, r: float, b: float) -> void:
 		else:
 			mc.add_theme_constant_override("margin_left", int(16 + l)); mc.add_theme_constant_override("margin_right", int(16 + r))
 			var card: Control = o.get_meta("card"); card.custom_minimum_size.x = minf(o.get_meta("maxw"), o.size.x - 32 - l - r)
+
+var panel_open := true
+
+## Width the side panel takes on screen (0 when hidden), safe-area margin included.
+func panel_px() -> float:
+	return (PANEL_W if panel_open else 0.0) + ins_r
+
+## Show or hide the side panel; the HUD and the 3D view's centre follow.
+func set_panel(open: bool) -> void:
+	panel_open = open; panel.visible = open
+	btn.panel.text = "»" if open else "« BUILD"
+	btn.panel.custom_minimum_size.x = 44 if open else 96
+	_place_hud()
+
+func _place_hud() -> void:
+	var pw := (PANEL_W if panel_open else 0.0)
+	hud.offset_left = ins_l; hud.offset_top = ins_t; hud.offset_right = -pw - ins_r; hud.offset_bottom = -ins_b
+	var dr: Control = hud.get_meta("draw")
+	dr.offset_left = -ins_l; dr.offset_top = -ins_t; dr.offset_right = pw + ins_r; dr.offset_bottom = ins_b
 
 func _fit_margins(o: Control) -> void:
 	var mc: MarginContainer = o.get_meta("mc")
@@ -443,7 +462,7 @@ func _build_overlays() -> void:
 	d = frame(c, 10)
 	d.add_child(eyebrow("Field manual  //  standing orders"))
 	d.add_child(title("Controls", 40))
-	for row in [["TOUCH", "Drag to scroll · tap a unit to select, tap ground or an enemy to order · tap the round button, then drag a box · pinch to zoom · double-tap a unit to grab every unit of that type on screen · hold, then drag at the destination to face a formation · long-press a build button to cancel."], ["MOUSE", "Click to select or command, drag to box-select, double-click a unit for all of its type, right-drag to face a formation, middle-drag or WASD to scroll, wheel to zoom."]]:
+	for row in [["TOUCH", "Drag with two fingers to move the map, pinch to zoom · tap a unit to select it, then tap the ground to move there or an enemy to attack it · tap another of your units to switch to it · drag one finger across your units to box-select · double-tap a unit to grab every unit of that type on screen · hold, then drag at the destination to face a formation · hold and let go, or ✕, to deselect · long-press a build button to cancel."], ["MOUSE", "Click to select or command, drag to box-select, double-click a unit for all of its type, right-drag to face a formation, middle-drag or WASD to scroll, wheel to zoom."], ["PANEL", "» in the top bar hides the build menu and minimap for a wider view; « BUILD brings them back. It lights up as « READY when a building is waiting to be placed."]]:
 		var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 12); d.add_child(h)
 		var k := lbl(row[0], f_wide, 11, W_BRASS); k.custom_minimum_size.x = 60; h.add_child(k)
 		var t := lbl(row[1], f_body, 13, Color("d6cfba")); t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; t.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(t)
