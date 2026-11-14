@@ -209,6 +209,8 @@ func _init_batches() -> void:
 		"missile": _batch(box, _pmat("unshaded", "", false), 60),
 		"rift": _batch(ring, _pmat("unshaded, blend_add, cull_disabled, depth_draw_never", "ALPHA = 0.8;", false), 60),
 		"gem": _batch(_mesh_from("oct"), _pmat("unshaded", "", false), 260),
+		"shard": _batch(_mesh_from("oct"), _pmat("unshaded", "", false), 120),
+		"field": _batch(_mesh_from("oct"), _pmat("unshaded", "", true), 420),
 		"shadow": _batch(disc, _pmat("unshaded, cull_disabled, depth_draw_never", "ALPHA = 0.28;", false), 80),
 	}
 	batches.shadow.mi.material_override.set_shader_parameter("tint", Color(0, 0, 0))
@@ -218,6 +220,8 @@ func _init_batches() -> void:
 	batches.missile.mi.material_override.set_shader_parameter("tint", Color("f2f2ee"))
 	batches.flash.mi.material_override.set_shader_parameter("tint", Color("ffc070"))
 	batches.gem.mi.material_override.set_shader_parameter("tint", Color("ffd25a"))
+	batches.shard.mi.material_override.set_shader_parameter("tint", Color("8dffad"))
+	batches.field.mi.material_override.set_shader_parameter("tint", Color("8dffad"))
 
 func _put(b: Dictionary, x: float, y: float, z: float, sx: float, sy: float, sz: float, rx := 0.0, ry := 0.0, rz := 0.0, col := Color(1, 1, 1, 1)) -> void:
 	var n: int = b.n
@@ -506,7 +510,7 @@ func _mk_rec(e: Ent) -> Dictionary:
 	ents_root.add_child(n)
 	var r := {"n": n, "team": e.team, "f": 0}
 	for k in ["body", "tur", "flash", "legL", "legR", "orb", "cargo", "scoop", "tube", "spin", "blink", "arm", "tool", "lamp", "lamp2", "rot", "tr", "sel",
-			"flag", "sock", "holo", "trolley", "door", "dl0", "dl1", "rune"]:
+			"flag", "sock", "holo", "trolley", "door", "dl0", "dl1", "rune", "grow", "glow", "halo", "wingL", "wingR"]:
 		var c := n.find_child(k, true, false)
 		if c: r[k] = c
 	if e.kind == "b":
@@ -542,7 +546,7 @@ func sync_ents(t: float) -> void:
 		if r == null:
 			r = _mk_rec(e); recs[e.id] = r
 		r.f = frame_no
-		var vis: bool = e.team == 0 or S.visible_to_player(e)
+		var vis: bool = (e.team == 0 or S.visible_to_player(e)) and e.intun <= 0
 		r.n.visible = vis
 		if not vis: continue
 		r.sel.visible = e.sel
@@ -558,6 +562,10 @@ func sync_ents(t: float) -> void:
 				if r.has("rots"):
 					for i in r.rots.size(): r.rots[i].rotation.y = t * (-30 if i % 2 else 30)
 				r.sel.position.y = -D.ALT + .04
+				if r.has("wingL"):
+					r.wingL.rotation.x = sin(t * 18 + e.id) * .45; r.wingR.rotation.x = -r.wingL.rotation.x
+			elif e.under: n.position.y -= .3   # a burrowing sapper: only its back shows above the dirt
+			if r.has("halo"): r.halo.rotation.z = t * 1.5
 			if r.has("orb"): r.orb.scale = Vector3.ONE * .08 * (1 + .15 * sin(t * 8 + e.id))
 			if r.has("tur"): r.tur.rotation.y = -(e.tang - e.ang)
 			if r.has("flash"): r.flash.visible = e.flash > 0
@@ -585,10 +593,15 @@ func sync_ents(t: float) -> void:
 			_bld_idle(e, r, t)
 			if r.has("tur"): r.tur.rotation.y = -e.tang
 			if r.has("flash"): r.flash.visible = e.flash > 0
-			if r.has("spin"): r.spin.rotation.y = t * ((.6 + e.ch / D.BLD.rift.charge * 2.5) if e.type == "rift" else .9)
+			if r.has("spin"): r.spin.rotation.y = t * ((.6 + e.ch / e.d.charge * 2.5) if e.d.sw else .9)
 			if r.has("orb"):
-				var c: float = e.ch / D.BLD.rift.charge if e.type == "rift" else 1.0
-				r.orb.scale = Vector3.ONE * ((.2 + .2 * c) if e.type == "rift" else .15) * (1 + .12 * sin(t * 7))
+				var c: float = e.ch / e.d.charge if e.d.sw else 1.0
+				r.orb.scale = Vector3.ONE * ((.2 + .2 * c) if e.d.sw else .15) * (1 + .12 * sin(t * 7))
+			if r.has("grow"):
+				# garden crystals swell towards each harvest and sink back when it is gathered
+				var g: float = clamp(e.gt / 4.0, 0.0, 1.0)
+				r.grow.scale = Vector3(.85 + .15 * g, .55 + .45 * g, .85 + .15 * g)
+				if r.has("glow"): r.glow.scale = Vector3.ONE * (1.0 + (.8 if t - e.unload_t < .4 else .15 * sin(t * 3)))
 			if r.has("doors"):
 				var o: float = 1.0 if e.rdy else max(0.0, (e.ch / D.BLD.skyfall.charge - .85) / .15)
 				for dr in r.doors:
@@ -783,7 +796,7 @@ func draw_parts() -> void:
 			"tracer":
 				if lines >= 400: continue
 				var ha: float = p.ha; var hb: float = p.hb
-				var c := Color(f, f * .92, f * (.9 if p.c else .6))
+				var c := Color(f * .45, f, f * .6) if p.c == 2 else Color(f, f * .92, f * (.9 if p.c else .6))
 				tm.surface_set_color(c); tm.surface_add_vertex(Vector3(X, ha, Z))
 				tm.surface_set_color(c); tm.surface_add_vertex(Vector3(p.x2 / T, hb, p.y2 / T)); lines += 1
 			"arc":
@@ -807,8 +820,12 @@ func draw_parts() -> void:
 				_put(batches.missile, X, y, Z, .06, .35, .06); _put(batches.flame, X, y + .3, Z, .08, .12, .08, 0, 0, 0, Color(1, .6, .2))
 			"rift":
 				var kk: float = p.f; var s := 3.4 * (1 - kk * .85) + .1; var gh := S.h_at(p.x, p.y)
-				_put(batches.rift, X, gh + .1 + kk * .5, Z, s, 1, s, 0, S.time * 3, 0, Color(.6 * f, .4 * f, f))
-				_put(batches.rift, X, gh + .3 + kk * 1.2, Z, s * .6, 1, s * .6, 0, -S.time * 4, 0, Color(.8 * f, .5 * f, f))
+				var gr: bool = p.get("g", false)
+				_put(batches.rift, X, gh + .1 + kk * .5, Z, s, 1, s, 0, S.time * 3, 0, Color(.3 * f, f, .45 * f) if gr else Color(.6 * f, .4 * f, f))
+				_put(batches.rift, X, gh + .3 + kk * 1.2, Z, s * .6, 1, s * .6, 0, -S.time * 4, 0, Color(.55 * f, f, .6 * f) if gr else Color(.8 * f, .5 * f, f))
+			"aura":
+				var s: float = p.R / T * (.35 + .65 * (1 - f)); var c := Color(.12 * f, .5 * f, .22 * f)
+				_put(batches.rift, X, S.h_at(p.x, p.y) + .06, Z, s, 1, s, 0, 0, 0, c)
 	if lines == 0:
 		tm.surface_set_color(Color(0, 0, 0)); tm.surface_add_vertex(Vector3.ZERO); tm.surface_add_vertex(Vector3.ZERO)
 	tm.surface_end()
@@ -818,11 +835,28 @@ func draw_parts() -> void:
 		_put(batches.shadow, e.x / T, S.h_at(e.x, e.y) + .03, e.y / T, s, 1, s)
 	for p in S.proj:
 		var X: float = p.x / T; var Z: float = p.y / T
-		if p.w == "shell" or p.w == "arty" or p.w == "flak":
+		if p.w == "geode":
+			_put(batches.shard, X, p.h, Z, .09, .12, .09, p.h * 3, 0, 0)
+		elif p.w == "spine":
+			_put(batches.shard, X, p.h, Z, .2, .03, .03, 0, -p.ang, 0)
+		elif p.w == "shell" or p.w == "arty" or p.w == "flak":
 			var s := .07 if p.w == "arty" else .045
 			_put(batches.shell, X, p.h, Z, s, s, s)
 		else:
 			_put(batches.rocket, X, p.h, Z, .16, .035, .035, 0, -p.ang, 0)
+	# shard fields: crystals rise fast, then sink as the field runs out
+	for fl in S.fields:
+		var tx := int(fl.x / T); var ty := int(fl.y / T)
+		if not Sim.inb(tx, ty) or S.vis[ty * MW + tx] == 0: continue
+		var age: float = fl.max - fl.life
+		var g: float = clamp(age / .3, 0.0, 1.0) * clamp(fl.life / 1.5, 0.0, 1.0)
+		var n := int(fl.r / T * 9)
+		for i in n:
+			var a: float = fl.seed + i * 2.39996; var rr: float = fl.r * sqrt((i + .5) / n) * .9
+			var x: float = fl.x + cos(a) * rr; var y: float = fl.y + sin(a) * rr
+			var hh: float = (.13 + .12 * fmod(i * .618, 1.0)) * g
+			if hh < .005: continue
+			_put(batches.field, x / T, S.h_at(x, y) + hh * .7, y / T, hh * .5, hh, hh * .5, sin(a) * .35, a, cos(a) * .35, Color(.9 if i % 3 else .55, 1, .9 if i % 3 else .6))
 	for k in batches: _flush(batches[k])
 
 # ---------------- ghost, rally, formation preview ----------------

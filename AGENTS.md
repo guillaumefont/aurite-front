@@ -26,8 +26,23 @@
 - `android-webview/`: older Android WebView wrapper around `web-3d` (`build.sh`, no Gradle). Not built by CI.
 - `web-2d/`: original 2D prototype. Archived.
 - The game is called "Aurite Front". Team colours follow the faction (`D.FCOL`, set per match by `D.set_team_colors`):
-  the Vanguard is blue `#3fb4e8`, the Ashen Pact red `#e0423a`. Guillaume, 2026-11-14: the game is red themed, so
+  the Vanguard is blue `#3fb4e8`, the Ashen Pact red `#e0423a`, the Hollow Choir green `#3cc457`. Guillaume, 2026-11-14: the game is red themed, so
   campaign I is played as the (red) Ashen Pact and campaign II as the Vanguard.
+
+## Hollow Choir (third faction, skirmish only so far)
+
+- Faction-only types have `fac: "choir"`; shared types the Choir does without have `no: ["choir"]`, and
+  `D.sub(fac, type)` gives the faction's stand-in (`refinery` → `garden`, `rifle` → `thrall`, `arty` → `geode`).
+  Requirements go through `Sim.req_of`, so `factory` (needs a refinery) unlocks from a garden. Use `D.sub` in AI and
+  start-up code instead of naming shared types.
+- Tunnels: `Sim.plan_tunnel` (from `group_move`), `tunnel_tick`, `_emerge`. A unit in a tunnel has `intun > 0`: it is
+  hidden, unselectable and skipped by separation. `under` (tunnels and moving sappers) makes a unit untargetable and
+  undamageable. Handle both in any new targeting or selection code.
+- Shard fields are `Sim.fields`, drawn in `View3D.draw_parts`. Unit limits (`lim`, the Cantor) go through `Sim.at_limit`.
+- `tests/sim_test.gd` `choir_tests()` covers AI soaks with the Choir on each side, gardens, tunnels, burrowing,
+  geode fields, the aura, the limit and the Chorus Well. In AI-vs-AI runs (2026-11-14) the Choir won 5 of 12, lost 6, drew 1.
+- New sounds (`shard`, `geode`, `burrow`, `ack_choir`) are in `tools/synth.py`. Re-rendering every sound on another
+  numpy version changes the old files slightly, so copy only the new ones into `sfx/`.
 
 ## CI (`.github/workflows/`)
 

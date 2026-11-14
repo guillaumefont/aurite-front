@@ -30,6 +30,8 @@ var seed := 0
 var stats := {"built": 0, "lost": 0, "killed": 0, "mined": 0}
 var mission = null
 var strikes: Array = []
+var fields: Array = []        # crystal shard fields on the ground: {x, y, r, life, max, team, dps, tick, seed}
+var aura_tick := 0.0
 var combat := 0.0
 var teams: Array = []
 var diff := "normal"
@@ -110,6 +112,7 @@ func is_air(e: Ent) -> bool:
 func avail(team: int, type: String) -> bool:
 	var d: Dictionary = D.def_of(type)
 	if d.fac != "" and teams.size() > team and d.fac != teams[team].fac: return false
+	if teams.size() > team and d.no.has(teams[team].fac): return false
 	if mission:
 		var ts = mission.tech if team == 0 else mission.aiTech
 		if ts != null and not (ts as Array).has(type): return false
@@ -235,7 +238,12 @@ func new_game(d: String, opt: Dictionary) -> void:
 	diff = M.diff if M else d
 	seed = M.seed if M else opt.get("seed", int(Time.get_ticks_msec() % 100000) + randi() % 1000)
 	var pf: String = M.fac if M else opt.get("fac", "vanguard")
-	time = 0.0; ents = []; nid = 1; proj = []; parts = []; sel = []; over = false; vis_t = 0.0; ai_t = 2.0
+	var ef: String = opt.get("enemy", "") if not M else ""
+	if ef == "random":
+		var others: Array = D.FAC_ORDER.filter(func(f): return f != pf)
+		ef = others[randi() % others.size()]
+	if ef == "" or ef == pf or not D.FACS.has(ef): ef = "ashen" if pf == "vanguard" else "vanguard"
+	time = 0.0; ents = []; nid = 1; proj = []; parts = []; sel = []; over = false; vis_t = 0.0; ai_t = 2.0; fields = []; aura_tick = 0.0
 	last_alert = -99.0; ping = null; stats = {"built": 0, "lost": 0, "killed": 0, "mined": 0}; strikes = []; combat = 0.0; delayed = []; by_id = {}
 	terr = PackedByteArray(); terr.resize(MW * MH)
 	ore = PackedInt32Array(); ore.resize(MW * MH)
@@ -246,8 +254,8 @@ func new_game(d: String, opt: Dictionary) -> void:
 		var prod := {}
 		for c in D.CAT_ORDER: prod[c] = {"cur": "", "prog": 0.0, "paid": 0.0, "ready": false, "queue": [], "left": 0}
 		teams.append({"id": id, "credits": float(M.credits[id] if M else D.DIFF[diff].start), "ai": id == 1,
-			"fac": pf if id == 0 else ("ashen" if pf == "vanguard" else "vanguard"), "pmade": 0, "pused": 0, "rally": null,
-			"wave": 5, "waveT": 0, "wn": 0, "prod": prod, "noFundsT": 0.0})
+			"fac": pf if id == 0 else ef, "pmade": 0, "pused": 0, "rally": null,
+			"wave": 5, "waveT": 0, "wn": 0, "prod": prod, "noFundsT": 0.0, "earned": 0.0})
 	if D.set_team_colors(teams[0].fac, teams[1].fac): Models.cache.clear()
 	gi = 0; g_t0 = 0.0; gst = {}; wst = {}; ev_done = {}; m_t = 1.0; end_why = ""
 	var A := Vector2i(MW - 1 - D.P0.x, MH - 1 - D.P0.y)
@@ -267,7 +275,7 @@ func new_game(d: String, opt: Dictionary) -> void:
 			var tm: int = pair[0]; var p: Vector2i = pair[1]
 			add_building(tm, "hq", p.x - 1, p.y - 1)
 			var dir := 1 if tm == 0 else -1
-			for k in 3: spawn_unit(tm, "rifle", (p.x + dir * (2 + k)) * T + 16, (p.y - dir * 3) * T + 16)
+			for k in 3: spawn_unit(tm, D.sub(teams[tm].fac, "rifle"), (p.x + dir * (2 + k)) * T + 16, (p.y - dir * 3) * T + 16)
 			spawn_unit(tm, D.FACS[teams[tm].fac].lv, (p.x + dir * 3) * T + 16, (p.y - dir * 2) * T + 16)
 	var er: Vector2i = e0 if e0 != null else Vector2i(MW - 1 - p0.x, MH - 1 - p0.y)
 	teams[1].rally = Vector2((er.x - 6) * T, (er.y + 6) * T)
@@ -441,9 +449,25 @@ func count(team: int, type: String) -> int:
 	return n
 
 func has_req(team: int, req: Array) -> bool:
-	for r in req:
+	for r in req_of(team, req):
 		if count(team, r) == 0: return false
 	return true
+
+## Requirements in the team's own buildings (the Choir's garden stands in for a refinery).
+func req_of(team: int, req: Array) -> Array:
+	if teams.size() <= team: return req
+	var f: String = teams[team].fac
+	return req.map(func(r): return D.sub(f, r) if D.sub(f, r) != "" else r)
+
+## One-of-a-kind units (the Cantor): true when one is alive or already ordered.
+func at_limit(team: int, type: String) -> bool:
+	var d: Dictionary = D.def_of(type)
+	if d.lim <= 0 or teams.size() <= team: return false
+	var n := count(team, type)
+	if d.has("cat") and teams[team].prod.has(d.cat):
+		var q: Dictionary = teams[team].prod[d.cat]
+		n += q.queue.count(type) + (1 if q.cur == type else 0)
+	return n >= d.lim
 
 func dist_to_ent(ax: float, ay: float, b) -> float:
 	if b.kind == "b":
@@ -454,6 +478,7 @@ func dist_to_ent(ax: float, ay: float, b) -> float:
 
 func visible_to_player(e: Ent) -> bool:
 	if e.team == 0: return true
+	if e.kind == "u" and e.under: return false
 	return vis[t_idx(e)] == 2 if e.kind == "u" else e.seen
 
 # ---------------- terrain-aware fire ----------------
@@ -641,15 +666,18 @@ func group_move(units: Array, wx: float, wy: float, order: String, face = null, 
 			plan.append([u, sl if sl != null else Vector2i(clampi(int(wx / T), 0, MW - 1), clampi(int(wy / T), 0, MH - 1))])
 	for p in plan:
 		var u: Ent = p[0]; var sl: Vector2i = p[1]
+		if u.intun > 0:
+			u.tun.dest = sl; u.tun.order = order; u.face = face; continue
 		u.order = order; u.target = null; u.auto = false; u.guard = null; u.face = face
 		if u.d.harv: u.hs = "manual"
 		set_path(u, sl.x, sl.y)
+		plan_tunnel(u, sl)
 	if plan.size() > 1 and form:
 		# shared pace: the main body arrives together (aircraft fly ahead). Units far behind the main
 		# body (STRAGGLE tiles more to travel than the median) don't hold it back: they go at full speed.
 		var ground: Array = []
 		for p in plan:
-			if not p[0].d.air and p[0].path.size(): ground.append(p[0])
+			if not p[0].d.air and p[0].path.size() and p[0].tun == null: ground.append(p[0])
 		var lens: Array = []
 		for u in ground:
 			var L := 0.0; var x: float = u.x; var y: float = u.y
@@ -689,12 +717,132 @@ func follow_esc(u: Ent, dt: float) -> bool:
 
 func attack_order(units: Array, t: Ent) -> void:
 	for u in units:
-		if u.d.dmg == 0 or not can_hit(u.d, t): continue
-		u.order = "attack"; u.target = t; u.auto = false; u.path = []; u.rp = 0.0; u.face = null
+		if u.d.dmg == 0 or not can_hit(u.d, t) or u.intun > 0: continue
+		u.order = "attack"; u.target = t; u.auto = false; u.path = []; u.rp = 0.0; u.face = null; u.tun = null
 
 func eng_order(us: Array, b: Ent) -> void:
 	for u in us:
+		if u.intun > 0: continue
+		u.tun = null
 		u.order = "capture"; u.target = b; u.path = []; u.rp = 0.0
+
+# ---------------- Hollow Choir tunnels ----------------
+## Burrows and the Choir's Command Yard are linked underground: a unit walks into the one nearest to it
+## and comes out of the one nearest its destination, when that is clearly shorter than walking.
+func is_tun(b: Ent) -> bool:
+	return b.alive and b.kind == "b" and (b.d.tun or (b.type == "hq" and teams[b.team].fac == "choir"))
+
+func tun_exit(b: Ent) -> Vector2i:
+	var gx: int = b.tx + (b.w >> 1); var gy: int = b.ty + b.h
+	var n = nearest_walk(gx, gy, gx, gy + 1)
+	return n if n != null else Vector2i(gx, gy)
+
+func plan_tunnel(u: Ent, dest: Vector2i) -> void:
+	u.tun = null
+	if u.d.air or u.d.harv or teams[u.team].fac != "choir" or u.captive: return
+	var A: Ent = null; var B: Ent = null; var da := 1e9; var db := 1e9
+	var dx := dest.x * T + 16.0; var dy := dest.y * T + 16.0
+	for b in ents:
+		if b.team != u.team or not is_tun(b): continue
+		var a := Vector2(b.x - u.x, b.y - u.y).length()
+		if a < da: da = a; A = b
+		var c := Vector2(b.x - dx, b.y - dy).length()
+		if c < db: db = c; B = b
+	if A == null or A == B: return
+	var direct := Vector2(dx - u.x, dy - u.y).length()
+	if da + db + T * 4 >= direct * 0.75: return
+	u.tun = {"a": A, "b": B, "dest": dest, "order": u.order}
+	var ex := tun_exit(A)
+	u.path = route(u, ex.x, ex.y); u.stuck = 0; u.fspd = 0.0
+
+## Runs the tunnel trip. True while the unit is underground (nothing else to update).
+func tunnel_tick(u: Ent, dt: float) -> bool:
+	var tn: Dictionary = u.tun
+	var A: Ent = tn.a; var B: Ent = tn.b
+	if u.intun > 0:
+		u.intun -= dt
+		if u.intun <= 0 or (not A.alive and not B.alive): _emerge(u)
+		return true
+	if not A.alive or not B.alive:
+		u.tun = null
+		if u.target == null: set_path(u, tn.dest.x, tn.dest.y)
+		return false
+	if u.target != null or not u.path.is_empty(): return false
+	if dist_to_ent(u.x, u.y, A) < T * 2.5:
+		u.intun = 0.8 + Vector2(B.x - A.x, B.y - A.y).length() / (T * 14.0)
+		u.under = true; u.moving = false; u.sel = false; _drop_sel(u)
+		_dig(u.x, u.y, 6); host.sfx("burrow", u.x, u.y)
+		return true
+	u.tun = null
+	return false
+
+func _emerge(u: Ent) -> void:
+	var tn: Dictionary = u.tun
+	var out: Ent = tn.b if tn.b.alive else (tn.a if tn.a.alive else null)
+	if out != null:
+		var ex := tun_exit(out)
+		var sl := slots_around(ex.x, ex.y, 1 + randi() % 4)
+		var p: Vector2i = sl[-1] if sl.size() else ex
+		u.x = p.x * T + 16; u.y = p.y * T + 16
+	u.intun = 0.0; u.under = false; u.tun = null; u.lx = u.x; u.ly = u.y
+	u.order = tn.order if tn.order != "none" else "move"
+	set_path(u, tn.dest.x, tn.dest.y)
+	_dig(u.x, u.y, 6); host.sfx("burrow", u.x, u.y)
+
+func _dig(x: float, y: float, n: int) -> void:
+	for k in n:
+		var a := randf() * TAU
+		parts.append({"k": "smoke", "x": x + cos(a) * 6, "y": y + sin(a) * 6, "vx": cos(a) * 26, "vy": sin(a) * 26, "life": 0.6, "max": 0.6, "s": 3.0, "c": Color8(122, 104, 78)})
+
+# ---------------- Hollow Choir shard fields ----------------
+func add_field(x: float, y: float, r: float, life: float, team: int, dps: float) -> void:
+	fields.append({"x": x, "y": y, "r": r, "life": life, "max": life, "team": team, "dps": dps, "tick": 0.0, "seed": randi() % 1000})
+
+func upd_fields(dt: float) -> void:
+	if fields.is_empty(): return
+	for f in fields:
+		f.life -= dt; f.tick -= dt
+		if f.tick > 0: continue
+		f.tick = 0.25
+		for o in ents:
+			if not o.alive or o.kind != "u" or o.team == f.team or o.d.air or o.under or o.captive: continue
+			if Vector2(o.x - f.x, o.y - f.y).length() < f.r: damage(o, f.dps * 0.25, "shard", null)
+	fields = fields.filter(func(f): return f.life > 0)
+
+## Cantors lift every friendly unit around them; a faint ring shows the reach.
+func upd_auras(dt: float) -> void:
+	aura_tick -= dt
+	if aura_tick > 0: return
+	aura_tick = 0.5
+	for c in ents:
+		if not c.alive or c.kind != "u" or c.d.aura <= 0 or c.intun > 0 or c.captive: continue
+		var R: float = c.d.aura * T
+		for o in ents:
+			if o.alive and o.kind == "u" and o.team == c.team and o != c and Vector2(o.x - c.x, o.y - c.y).length() < R: o.aura_t = 0.7
+		if int(time * 2) % 3 == 0: parts.append({"k": "aura", "x": c.x, "y": c.y, "life": 1.3, "max": 1.3, "R": R})
+
+## Crystal garden: every 4 s it yields 40 aurite on its own and drinks up to 80 more from the ore within 5 tiles.
+func upd_garden(b: Ent, tm: Dictionary, dt: float) -> void:
+	b.gt += dt
+	if b.gt < 4.0: return
+	b.gt -= 4.0
+	var want := 80; var got := 0; var shown := 0
+	var cx: float = b.tx + b.w / 2.0; var cy: float = b.ty + b.h / 2.0
+	for ty in range(int(cy) - 6, int(cy) + 6):
+		for tx in range(int(cx) - 6, int(cx) + 6):
+			if got >= want or not inb(tx, ty): continue
+			var i := ty * MW + tx
+			if ore[i] <= 0 or Vector2(tx + 0.5 - cx, ty + 0.5 - cy).length() > 5.5: continue
+			var take := mini(ore[i], want - got); ore[i] -= take; got += take
+			if shown < 4 and (b.team == 0 or visible_to_player(b)):
+				shown += 1
+				parts.append({"k": "gem", "x": tx * T + 16.0, "y": ty * T + 16.0, "bx": b.x, "by": b.y, "ah": h_at(tx * T + 16.0, ty * T + 16.0) + .05, "bh": h_at(b.x, b.y) + 1.0, "life": .9, "max": .9, "s": .07 + randf() * .04})
+	var amt: float = (40.0 + got) * (0.5 if low_power(b.team) else 1.0)
+	tm.credits += amt * (D.DIFF[diff].inc if tm.ai else 1.0); tm.earned += amt
+	b.unload_t = time
+	if b.team == 0:
+		stats.mined += int(amt)
+		parts.append({"k": "txt", "x": b.x, "y": b.y, "txt": "+%d" % int(amt), "c": Color("f0b93f"), "life": 1.6, "max": 1.6, "h": 1.5})
 
 # ---------------- simulation ----------------
 func find_target(src: Ent, rng: float) -> Ent:
@@ -702,7 +850,7 @@ func find_target(src: Ent, rng: float) -> Ent:
 	var sd: Dictionary = src.d
 	var bld_src := src.kind == "b"
 	for o in ents:
-		if not o.alive or o.team == src.team or o.captive: continue
+		if not o.alive or o.team == src.team or o.captive or o.under: continue
 		if src.team == 0 and not visible_to_player(o): continue
 		if not can_hit(sd, o): continue
 		var dd := dist_to_ent(src.x, src.y, o)
@@ -729,11 +877,18 @@ func fire(s: Ent, t: Ent, d: Dictionary) -> void:
 	var hs := muzzle_h(s); var htg := aim_h(t)
 	if t.team == 0 or s.team == 0: combat = min(1.0, combat + 0.04)
 	var w: String = d.weapon
-	if w == "bullet" or w == "snipe" or w == "rail":
-		var sn := w != "bullet"
-		parts.append({"k": "tracer", "x": mx, "y": my, "x2": t.x + ox + (randf() - 0.5) * 6, "y2": t.y + oy + (randf() - 0.5) * 6, "life": 0.18 if sn else 0.07, "max": 0.18 if sn else 0.07, "ha": h_at(mx, my) + hs, "hb": h_at(t.x, t.y) + htg, "c": 1 if sn else 0})
-		parts.append({"k": "spark", "x": t.x + ox, "y": t.y + oy, "vx": (randf() - 0.5) * 60, "vy": (randf() - 0.5) * 60, "life": 0.15, "max": 0.15, "c": Color("#ffe7a0"), "s": 1.5, "h0": h_at(t.x, t.y) + htg})
-		host.sfx("snipe" if sn else "gun", s.x, s.y)
+	if w == "bullet" or w == "snipe" or w == "rail" or w == "shard":
+		var sn := w == "snipe" or w == "rail"; var sh := w == "shard"
+		var lf := 0.18 if sn else (0.1 if sh else 0.07)
+		parts.append({"k": "tracer", "x": mx, "y": my, "x2": t.x + ox + (randf() - 0.5) * 6, "y2": t.y + oy + (randf() - 0.5) * 6, "life": lf, "max": lf, "ha": h_at(mx, my) + hs, "hb": h_at(t.x, t.y) + htg, "c": 2 if sh else (1 if sn else 0)})
+		parts.append({"k": "spark", "x": t.x + ox, "y": t.y + oy, "vx": (randf() - 0.5) * 60, "vy": (randf() - 0.5) * 60, "life": 0.15, "max": 0.15, "c": Color("#9dffb4") if sh else Color("#ffe7a0"), "s": 1.5, "h0": h_at(t.x, t.y) + htg})
+		host.sfx("shard" if sh else ("snipe" if sn else "gun"), s.x, s.y)
+		damage(t, d.dmg, w, s)
+	elif w == "charge":
+		# the sapper sets a crystal charge against the target and steps back
+		explode(t.x + ox * 0.5, t.y + oy * 0.5, 14)
+		for k in 6: parts.append({"k": "spark", "x": t.x, "y": t.y, "vx": (randf() - 0.5) * 90, "vy": (randf() - 0.5) * 90, "life": 0.4, "max": 0.4, "c": Color("#9dffb4"), "s": 2.2})
+		host.sfx("boom", s.x, s.y)
 		damage(t, d.dmg, w, s)
 	elif w == "flame":
 		for i in 5:
@@ -759,16 +914,20 @@ func fire(s: Ent, t: Ent, d: Dictionary) -> void:
 			damage(o, d.dmg * (0.6 if j else 1.0), "arc", s)
 		host.sfx("arc", s.x, s.y)
 	else:
-		var arty := w == "arty"
+		var arty := D.INDIRECT.has(w)   # lobbed: Howler mortar shells, Geode Lobber crystals
 		if arty: ox += (randf() - 0.5) * 30; oy += (randf() - 0.5) * 30
 		var p := {"x": mx, "y": my, "t": t, "ox": ox, "oy": oy, "tx": t.x + ox, "ty": t.y + oy, "w": w, "dmg": d.dmg, "src": s, "src_team": s.team,
-			"spd": 440.0 if w == "shell" else (230.0 if arty else (560.0 if w == "flak" else 290.0)), "ang": ang, "fixed": arty, "splash": d.splash,
+			"spd": 440.0 if w == "shell" else (230.0 if arty else (560.0 if w == "flak" else (330.0 if w == "spine" else 290.0))), "ang": ang, "fixed": arty, "lob": arty, "splash": d.splash,
 			"y0": h_at(mx, my) + hs, "y1": h_at(t.x + ox, t.y + oy) + (0.05 if arty else htg), "aim": 0.05 if arty else htg, "dead": false}
 		p.d0 = max(1.0, Vector2(p.tx - mx, p.ty - my).length())
 		p.apex = ballistic_apex(p) if arty else 0.0
 		p.h = p.y0
 		proj.append(p)
-		host.sfx("mortar" if arty else ("heavy" if (s.type == "bulwark" or s.type == "bastion" or s.type == "saint") else w), s.x, s.y)
+		var snd: String = w
+		if w == "arty": snd = "mortar"
+		elif w == "spine": snd = "shard"
+		elif s.type == "bulwark" or s.type == "bastion" or s.type == "saint": snd = "heavy"
+		host.sfx(snd, s.x, s.y)
 
 ## A real lob: the apex is high enough for the shell to clear every hill on the way.
 func ballistic_apex(p: Dictionary) -> float:
@@ -784,7 +943,7 @@ func ballistic_apex(p: Dictionary) -> float:
 	return apex
 
 func damage(t: Ent, dmg: float, w: String, src) -> void:
-	if not t.alive or t.captive: return
+	if not t.alive or t.captive or t.under: return
 	var arm: String = "bld" if t.kind == "b" else t.d.armor
 	t.hp -= dmg * D.MOD[w][arm]; t.hit_t = 3.0
 	if t.team == 0: combat = min(1.0, combat + 0.05)
@@ -881,12 +1040,16 @@ func upd_unit(u: Ent, dt: float) -> void:
 	if u.hit_t > 0: u.hit_t -= dt
 	if u.captive:
 		u.moving = false; return
+	if u.tun != null and tunnel_tick(u, dt): return
+	if u.aura_t > 0:
+		u.aura_t -= dt; u.cd -= dt * 0.3
+		if u.hp < u.max_hp: u.hp = min(u.max_hp, u.hp + u.max_hp * 0.01 * dt)
 	if d.hero and u.hp < u.max_hp and u.hit_t <= 0: u.hp = min(u.max_hp, u.hp + u.max_hp * 0.02 * dt)
 	if d.harv:
 		upd_harv(u, dt); u.moving = move_unit(u, dt); return
 	if d.heal: upd_medic(u, dt); return
 	if d.eng: upd_eng(u, dt); return
-	if u.target != null and (not u.target.alive or not can_hit(d, u.target) or (u.team == 0 and not visible_to_player(u.target) and u.order != "attack")):
+	if u.target != null and (not u.target.alive or u.target.under or not can_hit(d, u.target) or (u.team == 0 and not visible_to_player(u.target) and u.order != "attack")):
 		u.target = null
 		if u.order == "attack": u.order = "none"; u.path = []
 		if u.order == "amove" and u.dest != null: set_path(u, u.dest.x, u.dest.y)
@@ -933,6 +1096,11 @@ func upd_unit(u: Ent, dt: float) -> void:
 			if d.turret: u.tang = turn_to(u.tang, u.ang, 3 * dt)
 			if ang_diff(u.ang, u.face) < 0.01: u.face = null
 	u.moving = moving
+	if d.burrow:
+		# sappers dig through the ground while they move and surface to set their charges
+		if moving != u.under:
+			u.under = moving; _dig(u.x, u.y, 4)
+		elif moving and randf() < dt * 6: _dig(u.x, u.y, 1)
 
 func upd_medic(u: Ent, dt: float) -> void:
 	var d := u.d
@@ -1079,7 +1247,7 @@ func upd_harv(u: Ent, dt: float) -> void:
 				u.mt = 0.1
 				var a: float = min(50.0, u.load); u.load -= a; u.dump += a
 				var tm: Dictionary = teams[u.team]
-				tm.credits += a * (D.DIFF[diff].inc if tm.ai else 1.0)
+				tm.credits += a * (D.DIFF[diff].inc if tm.ai else 1.0); tm.earned += a
 				if u.team == 0: stats.mined += int(a)
 				if u.load <= 0:
 					u.load = 0.0; u.hs = "find"
@@ -1121,6 +1289,7 @@ func upd_bld(b: Ent, dt: float) -> void:
 		if b.smoke_t <= 0:
 			b.smoke_t = 0.22
 			parts.append({"k": "smoke", "x": b.tx * T + randf() * b.w * T, "y": b.ty * T + randf() * b.h * T, "vx": (randf() - 0.5) * 8, "vy": -14.0, "life": 1.5, "max": 1.5, "s": 5.0, "c": Color8(40, 36, 32) if b.hp < b.max_hp * 0.25 else Color8(90, 86, 80)})
+	if d.grow: upd_garden(b, tm, dt)
 	if d.sw:
 		b.ch = min(d.charge, b.ch + dt * (0.4 if low_power(b.team) else 1.0))
 		if b.ch >= d.charge and not b.rdy:
@@ -1133,7 +1302,7 @@ func upd_bld(b: Ent, dt: float) -> void:
 	if d.needPower and low_power(b.team):
 		b.target = null; return
 	b.cd -= dt * (0.4 if low_power(b.team) else 1.0)
-	if b.target != null and (not b.target.alive or dist_to_ent(b.x, b.y, b.target) > d.range * T or (b.team == 0 and not visible_to_player(b.target)) or not has_shot(b, b.target, dt)):
+	if b.target != null and (not b.target.alive or b.target.under or dist_to_ent(b.x, b.y, b.target) > d.range * T or (b.team == 0 and not visible_to_player(b.target)) or not has_shot(b, b.target, dt)):
 		b.target = null
 	b.scan -= dt
 	if b.target == null and b.scan <= 0:
@@ -1163,6 +1332,18 @@ func upd_strikes(dt: float) -> void:
 				s.hit += 1; explode(x, y, 26); host.add_scorch(x, y, T * 1.2); sw_damage(x, y, T * 1.8, 260); host.sfx("bigboom", x, y)
 			if s.t < 2.4 and randf() < 0.5:
 				parts.append({"k": "missile", "x": s.x + (randf() - 0.5) * T * 4, "y": s.y + (randf() - 0.5) * T * 4, "h": 14.0, "vh": -6.0, "vx": 0.0, "vy": 0.0, "life": 2.2 - s.t, "max": 2.2})
+		elif s.kind == "chorus":
+			# the ground hums, then crystals burst up and stay as a field of shards
+			if s.t < 2.6:
+				parts.append({"k": "rift", "x": s.x, "y": s.y, "life": 0.4, "max": 0.4, "f": s.t / 2.6, "g": true})
+				if randf() < 0.5: _dig(s.x + (randf() - 0.5) * T * 5, s.y + (randf() - 0.5) * T * 5, 1)
+			if s.t >= 2.6 and not s.hit:
+				s.hit = 1
+				for k in 10:
+					var a := k / 10.0 * TAU + randf() * 0.3; var r := T * (1.0 + randf() * 2.0)
+					explode(s.x + cos(a) * r, s.y + sin(a) * r, 18)
+				explode(s.x, s.y, 34); host.add_scorch(s.x, s.y, T * 2.6); sw_damage(s.x, s.y, T * 3.2, 750)
+				add_field(s.x, s.y, T * 3.2, 18.0, s.team, 30.0); host.sfx("bigboom", s.x, s.y)
 		else:
 			if s.t < 3: parts.append({"k": "rift", "x": s.x, "y": s.y, "life": 0.4, "max": 0.4, "f": s.t / 3.0})
 			if s.t >= 3 and not s.hit:
@@ -1191,13 +1372,14 @@ func separate() -> void:
 			if grid.has(k): grid[k].append(e)
 			else: grid[k] = [e]
 	for a in us:
+		if a.intun > 0: continue
 		var ax := int(a.x / T); var ay := int(a.y / T)
 		for oy in range(-1, 2):
 			for ox in range(-1, 2):
 				var k := (ay + oy) * MW + ax + ox
 				if not grid.has(k): continue
 				for b in grid[k]:
-					if b.id <= a.id: continue
+					if b.id <= a.id or b.intun > 0: continue
 					if a.d.air != b.d.air: continue
 					var dx: float = b.x - a.x; var dy: float = b.y - a.y; var mn: float = (a.r + b.r) * 0.8
 					if abs(dx) > mn or abs(dy) > mn: continue
@@ -1230,7 +1412,7 @@ func upd_proj(dt: float) -> void:
 		if not impact:
 			p.x += dx / dd * st; p.y += dy / dd * st
 			var prog: float = clamp(1.0 - Vector2(p.tx - p.x, p.ty - p.y).length() / p.d0, 0.0, 1.0)
-			var arc: float = p.apex * 4.0 * prog * (1.0 - prog) if p.w == "arty" else sin(prog * PI) * 0.12
+			var arc: float = p.apex * 4.0 * prog * (1.0 - prog) if p.lob else sin(prog * PI) * 0.12
 			p.h = lerp(float(p.y0), float(p.y1), prog) + arc
 			# shells that meet a hill burst on it
 			if p.h < h_at(p.x, p.y):
@@ -1245,6 +1427,7 @@ func upd_proj(dt: float) -> void:
 					var od := dist_to_ent(p.tx, p.ty, o) if o.kind == "b" else Vector2(o.x - p.tx, o.y - p.ty).length()
 					if od < p.splash: damage(o, p.dmg * (1 - od / p.splash * 0.6), p.w, p.src)
 				explode(p.tx, p.ty, 10)
+				if p.w == "geode": add_field(p.tx, p.ty, T * 1.3, 7.0, p.src_team, 12.0)
 			elif tg.alive and not p.get("ground", false): damage(tg, p.dmg, p.w, p.src)
 			var hh: float = p.h
 			parts.append({"k": "flash", "x": p.tx, "y": p.ty, "life": 0.15, "max": 0.15, "s": 12.0 if p.w == "shell" else (10.0 if p.w == "flak" else 9.0), "h0": hh})
@@ -1346,7 +1529,7 @@ func can_place(team: int, type: String, tx: int, ty: int, gap: bool) -> bool:
 		for y in range(ty - 1, ty + d.h + 1):
 			for x in range(tx - 1, tx + d.w + 1):
 				if inb(x, y) and bmap[y * MW + x]: return false
-		if type == "refinery" or type == "factory" or type == "barracks":
+		if type == "refinery" or type == "factory" or type == "barracks" or d.tun:
 			var ex: int = tx + d.w / 2; var ey: int = ty + d.h
 			if not walk(ex, ey) or not walk(ex, ey + 1): return false
 	if team == 0:
@@ -1354,6 +1537,11 @@ func can_place(team: int, type: String, tx: int, ty: int, gap: bool) -> bool:
 			if u.kind != "u" or not u.alive or u.d.air: continue
 			var ux := int(u.x / T); var uy := int(u.y / T)
 			if ux >= tx and ux < tx + d.w and uy >= ty and uy < ty + d.h: return false
+	if d.tun:
+		# a burrow can be dug anywhere the team has seen, but not right under an enemy base
+		for b in ents:
+			if b.kind == "b" and b.alive and b.team != team and Vector2(b.x - (tx + d.w / 2.0) * T, b.y - (ty + d.h / 2.0) * T).length() < T * 7: return false
+		return true
 	for b in ents:
 		if b.kind != "b" or not b.alive or b.team != team: continue
 		var gx := maxi(maxi(b.tx - (tx + d.w), tx - (b.tx + b.w)), 0); var gy := maxi(maxi(b.ty - (ty + d.h), ty - (b.ty + b.h)), 0)
@@ -1389,7 +1577,7 @@ func ai_think(tm: Dictionary) -> void:
 	var id: int = tm.id; var q: Dictionary = tm.prod.bld; var F: Dictionary = D.FACS[tm.fac]; var M = mission
 	var hq := find_hq(id)
 	if hq == null: return
-	var ok := func(t: String) -> bool: return avail(id, t) and has_req(id, D.def_of(t).req)
+	var ok := func(t: String) -> bool: return t != "" and avail(id, t) and has_req(id, D.def_of(t).req) and not at_limit(id, t)
 	if not M or M.aiBuild:
 		if q.ready:
 			var spot = ai_spot(id, q.cur, hq)
@@ -1404,7 +1592,9 @@ func ai_think(tm: Dictionary) -> void:
 					var t: String = t0
 					if t == "DEF": t = F.def
 					if t == "SW": t = F.sw
-					if not avail(id, t): continue
+					if t == "TUN": t = F.get("tun", "")
+					t = D.sub(tm.fac, t)
+					if t == "" or not avail(id, t): continue
 					need[t] = need.get(t, 0) + 1
 					if count(id, t) < need[t]: nxt = t; break
 			if nxt != "" and ok.call(nxt): q.cur = nxt
@@ -1417,11 +1607,16 @@ func ai_think(tm: Dictionary) -> void:
 		if count(id, "factory") and vq.cur == "" and vq.queue.is_empty():
 			if refs and harvs < mini(refs * 2, 3) and ok.call("harv"): vq.queue.append("harv")
 			elif tm.credits > 500 or q.cur == "":
-				var u: String = pick.call([F.lv, F.mt, F.mt, F.mt, "arty", F.ht, F.ht])
+				var u: String = pick.call([F.lv, F.mt, F.mt, F.mt, D.sub(tm.fac, "arty"), F.ht, F.ht])
 				if u != "": vq.queue.append(u)
 		if count(id, "barracks") and iq.cur == "" and iq.queue.is_empty() and (tm.credits > 300 or q.cur == ""):
-			var u: String = pick.call(["rifle", "rifle", "lancer", "lancer", "medic", F.inf, F.inf])
-			if u != "": iq.queue.append(u)
+			var rf := D.sub(tm.fac, "rifle")
+			var u: String = pick.call([rf, rf, "lancer", "lancer", "medic", F.inf, F.inf] + ([rf, rf, rf] if tm.fac == "choir" else []))
+			if F.get("hero", "") != "" and tm.credits > 2200 and ok.call(F.hero): u = F.hero
+			if u != "":
+				iq.queue.append(u)
+				# the Choir trains in swarms: cheap thralls come in threes
+				if u == rf and tm.fac == "choir": iq.queue.append(u); iq.queue.append(u)
 		if count(id, "helipad") and aq.cur == "" and aq.queue.is_empty() and tm.credits > 900 and count(id, F.air) < 4 + (2 if diff == "hard" else 0) and ok.call(F.air):
 			aq.queue.append(F.air)
 	# superweapon
@@ -1456,18 +1651,32 @@ func ai_think(tm: Dictionary) -> void:
 		if tgt != null:
 			group_move(idle, tgt.x, tgt.y, "amove"); tm.wave = mini(tm.wave + 2, 16)
 
-func ai_spot(id: int, type: String, hq: Ent):
+func ai_spot(id: int, type: String, hq: Ent, home := false):
 	var d: Dictionary = D.BLD[type]; var best = null; var bs := 1e9
 	var ores: Array = []
-	if type == "refinery":
+	var eco: bool = type == "refinery" or d.grow
+	if eco:
 		for i in MW * MH:
 			if ore[i]: ores.append(i)
 	var cx := hq.tx + 1; var cy := hq.ty + 1
+	var fwd = null
+	if d.tun and not home:
+		# burrows go forward, part way to the nearest enemy building, a little further for each one dug
+		var en: Ent = null; var ed := 1e9
+		for e in ents:
+			if e.alive and e.kind == "b" and e.team != id:
+				var dd := Vector2(e.x - hq.x, e.y - hq.y).length()
+				if dd < ed: ed = dd; en = e
+		if en == null: return null
+		var f: float = clamp(0.3 + 0.12 * count(id, type), 0.3, 0.6)
+		fwd = Vector2(lerp(hq.x, en.x, f) / T, lerp(hq.y, en.y, f) / T)
+		cx = int(fwd.x); cy = int(fwd.y)
 	for ty in range(cy - 12, cy + 13):
 		for tx in range(cx - 12, cx + 13):
 			if not can_place(id, type, tx, ty, true): continue
 			var mx: float = tx + d.w / 2.0; var my: float = ty + d.h / 2.0; var s: float
-			if type == "refinery":
+			if fwd != null: s = Vector2(mx - fwd.x, my - fwd.y).length() + randf() * 3
+			elif eco:
 				s = 1e9
 				for o in ores:
 					var dd := Vector2(o % MW - mx, o / MW - my).length()
@@ -1476,6 +1685,7 @@ func ai_spot(id: int, type: String, hq: Ent):
 			elif d.weapon != "": s = Vector2(mx - MW / 2.0, my - MH / 2.0).length() + randf() * 4
 			else: s = Vector2(mx - cx, my - cy).length() + randf() * 3
 			if s < bs: bs = s; best = Vector2i(tx, ty)
+	if best == null and fwd != null: return ai_spot(id, type, hq, true)
 	return best
 
 # ---------------- campaign goals, events, waves ----------------
@@ -1764,7 +1974,7 @@ func step(dt: float) -> void:
 		if not e.alive: continue
 		if e.kind == "u": upd_unit(e, dt)
 		else: upd_bld(e, dt)
-	separate(); upd_proj(dt); upd_parts(dt)
+	separate(); upd_proj(dt); upd_parts(dt); upd_fields(dt); upd_auras(dt)
 	if delayed.size():
 		var keep: Array = []
 		for dl in delayed:
