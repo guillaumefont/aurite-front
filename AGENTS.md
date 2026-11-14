@@ -122,8 +122,9 @@ in your PR, keep it short, and mention the change in the PR description.
 - Keep buttons and text inside the safe area: `main.gd _apply_safe` feeds `UI.set_insets` from the display safe area
   (camera hole/notch, either landscape side) with at least 24 UI units at the sides and 8 at top/bottom on phones
   for rounded corners. Backgrounds still bleed to the edges. Simulate a cutout with `AF_SAFE=left,top,right,bottom` (pixels).
-- Touch controls (Guillaume, 2026-11-14): two fingers pan (pinch zooms past a 12% dead zone), one finger taps to
-  select/order and drags a selection box. `main.gd PAN_FINGERS = 1` restores one-finger panning. The side panel
+- Touch controls (Guillaume, 2026-11-14): one finger drags the map (he tried two-finger panning and did not like it),
+  taps select/order, hold-then-drag boxes (or faces a formation when units are selected and the hold starts on open
+  ground). Pinch zooms past a 12% dead zone. `main.gd PAN_FINGERS = 2` is the two-finger variant. The side panel
   hides with the `»` button in the top bar (`UI.set_panel`, `user://prefs.json`); use `U.panel_px()` for its width.
 - Phone HUD extras (2026-11-14): production chips in the top bar while the panel is hidden (`UI.ProdChip`,
   `main._prod_chips`), MAP = enlarged minimap (`UI.big_map`, draws the panel minimap's texture), army groups

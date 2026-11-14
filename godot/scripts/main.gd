@@ -21,10 +21,10 @@ var brief_i := 0
 var camp_id := "ashen"
 var icons_for := ""
 var headless := false
-## Fingers that drag the map. 2: two-finger drag pans (and pinch zooms), so one finger is free to
-## tap-select, tap-order and drag a selection box (Guillaume, 2026-11-14). 1: the old scheme, one-finger
-## drag pans and the round button switches to box selection.
-const PAN_FINGERS := 2
+## Fingers that drag the map. 1 (Guillaume's pick after trying both, 2026-11-14): one-finger drag pans,
+## hold then drag draws a selection box (or faces a formation). 2: two-finger drag pans and a plain
+## one-finger drag draws the box.
+const PAN_FINGERS := 1
 
 # input state
 var ptrs := {}
@@ -56,7 +56,7 @@ func _ready() -> void:
 	U.set_tab("bld")
 	U.set_panel(_load_prefs().get("panel", true))
 	V.panel_px = U.panel_px()
-	U.mode_btn.visible = PAN_FINGERS == 1
+	U.mode_btn.visible = false  # box selection is a hold-and-drag (or a plain drag with PAN_FINGERS 2)
 	show_start()
 	if not headless: render_icons("vanguard")
 	get_viewport().size_changed.connect(_on_resize)
@@ -373,7 +373,7 @@ func new_game(d: String, opt: Dictionary) -> void:
 	_obj_vis()
 	if S.mission: toast(S.mission.title, "gold")
 	else:
-		toast("Two fingers move the map · drag one finger to box-select" if PAN_FINGERS == 2 else "Tap the round button to box-select units", "gold")
+		toast("Two fingers move the map · drag one finger to box-select" if PAN_FINGERS == 2 else "Drag to move the map · hold, then drag to box-select", "gold")
 		get_tree().create_timer(3.5).timeout.connect(func(): if S.time < 20 and not S.over: toast("Build a Reactor, then a " + D.BLD[D.sub(S.teams[0].fac, "refinery")].name, "gold"))
 	A.music_start()
 
@@ -811,7 +811,7 @@ func _down(id: int, p: Vector2, mouse: bool, button: int) -> void:
 		var m := (a + b) / 2
 		# the world point under the fingers' midpoint stays under it: moving both fingers pans the map;
 		# spreading them zooms, but only past a dead zone so a two-finger pan does not drift the zoom
-		gest = {"mode": "pinch", "d0": max(1.0, a.distance_to(b)), "z0": V.cam_z, "w": V.s2w(m.x, m.y), "zoom": PAN_FINGERS == 1, "upd": {}}
+		gest = {"mode": "pinch", "d0": max(1.0, a.distance_to(b)), "z0": V.cam_z, "w": V.s2w(m.x, m.y), "zoom": false, "upd": {}}
 		_clear_preview(); return
 	if ptrs.size() > 2: return
 	gest = {"mode": "pending", "s": p, "e": p, "l": p, "mouse": mouse, "btn": button, "t0": Time.get_ticks_msec()}
@@ -850,7 +850,9 @@ func _move(id: int, p: Vector2) -> void:
 		gest.mode = "face" if (gest.btn == MOUSE_BUTTON_RIGHT and _sel_movers().size() and placing == null) else "pan"
 		if gest.mode == "face": gest.from = V.s2w(gest.s.x, gest.s.y)
 	elif gest.mode == "lp" and moved:
-		if _sel_movers().size() and placing == null:
+		# hold then drag: a box, unless units are selected and the hold began on open ground, which
+		# sets a formation's facing; starting on one of your units always boxes
+		if _sel_movers().size() and placing == null and not gest.get("own", false):
 			gest.mode = "face"; gest.from = V.s2w(gest.s.x, gest.s.y)
 		else: gest.mode = "box"
 	match gest.mode:
@@ -925,6 +927,8 @@ func _up(id: int, p: Vector2, cancel: bool) -> void:
 func _check_long_press() -> void:
 	if gest != null and gest.mode == "pending" and not gest.mouse and placing == null and Time.get_ticks_msec() - gest.t0 > 450:
 		gest.mode = "lp"
+		var w := V.s2w(gest.s.x, gest.s.y); var h := pick(gest.s.x, gest.s.y, w.x, w.y)
+		gest.own = h != null and h.team == 0 and h.kind == "u"
 		Input.vibrate_handheld(15)
 
 func key_pan(dt: float) -> void:
@@ -1432,7 +1436,7 @@ func _input_test() -> void:
 	print("INPUT face gesture mode=", gest.mode if gest else "none", " preview=", preview_slots.size())
 	_touch(0, a + Vector2(180, 0), false); await get_tree().process_frame
 	print("INPUT face order: ", S.sel.map(func(e): return [e.order, snappedf(e.face if e.face != null else -9.0, 0.01)]))
-	# one-finger drag over the map: a box, not a pan (an empty box keeps the selection)
+	# one-finger drag over the map pans (PAN_FINGERS 1)
 	var cx := V.cam_x; var nsel := S.sel.size()
 	_touch(0, Vector2(400, 300), true); await get_tree().process_frame
 	for k in 5:
@@ -1440,9 +1444,17 @@ func _input_test() -> void:
 	print("INPUT one-finger drag mode=", gest.mode if gest else "none")
 	_touch(0, Vector2(200, 316), false); await get_tree().process_frame
 	print("INPUT one-finger drag pan dx=", V.cam_x - cx, " sel ", nsel, " -> ", S.sel.size())
-	# box around the rifle selects it
+	# hold on a rifle, then drag: box (even with units selected)
 	var rp3 := V.w2s(r.x, r.y, S.h_at(r.x, r.y) + .2)
-	_touch(0, Vector2(rp3.x - 60, rp3.y - 60), true); await get_tree().process_frame
+	S.set_sel([r])
+	_touch(0, Vector2(rp3.x, rp3.y), true); await get_tree().create_timer(0.7).timeout
+	for k in 4:
+		_drag(0, Vector2(rp3.x + 30 * (k + 1), rp3.y + 30 * (k + 1))); await get_tree().process_frame
+	print("INPUT hold-drag from own unit mode=", gest.mode if gest else "none")
+	_touch(0, Vector2(rp3.x + 120, rp3.y + 120), false); await get_tree().process_frame
+	print("INPUT hold-box sel=", S.sel.map(func(e): return e.type))
+	S.set_sel([])
+	_touch(0, Vector2(rp3.x - 60, rp3.y - 60), true); await get_tree().create_timer(0.7).timeout
 	for k in 4:
 		_drag(0, Vector2(rp3.x - 60 + 30 * (k + 1), rp3.y - 60 + 30 * (k + 1))); await get_tree().process_frame
 	_touch(0, Vector2(rp3.x + 60, rp3.y + 60), false); await get_tree().process_frame
@@ -1477,6 +1489,7 @@ func _input_test() -> void:
 	confirm_place()
 	print("INPUT reactors=", S.count(0, "power"))
 	# drag a ready reactor out of the menu onto the map (touch on the panel item, emulated mouse)
+	V.cam_z = 1.0; V.center_on(S.p0.x * T + 16, (S.p0.y - 1) * T)
 	click_item("bld", "power")
 	for i in 20 * 9: S.step(0.05)
 	refresh_panel(true); await get_tree().process_frame

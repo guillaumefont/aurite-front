@@ -27,11 +27,12 @@ miners and deserters from both sides who stayed too long near raw aurite undergr
 Copy it to the phone and open it (allow "install unknown apps"). It installs next to the older WebView app.
 
 ## Controls
-- **Touch**: **two-finger drag** moves the map, pinch to zoom. Tap a unit to select it, then tap ground to move
-  or an enemy to attack; tap another own unit to switch to it. **One-finger drag** box-selects (an empty or tiny box
-  keeps the selection / counts as a tap). Hold and let go deselects. `main.gd PAN_FINGERS = 1` brings back
-  one-finger panning and the round box-select button. **Double-tap a unit** selects every unit of that type on screen.
-  **Hold, then drag** at the destination to place a formation along the drag line; it faces away from you for a left-to-right drag. You see a preview while dragging.
+- **Touch**: drag moves the map, pinch to zoom (past a 12% dead zone). Tap a unit to select it, then tap ground to move
+  or an enemy to attack; tap another own unit to switch to it. **Hold, then drag** box-selects; with units selected,
+  a hold that starts on open ground sets formation facing instead, one that starts on your own unit still boxes.
+  Hold and let go deselects. `main.gd PAN_FINGERS = 2` switches to two-finger panning with a plain one-finger box
+  (Guillaume tried it and preferred one finger). **Double-tap a unit** selects every unit of that type on screen.
+  **Hold on open ground, then drag** (units selected) to place a formation along the drag line; it faces away from you for a left-to-right drag. You see a preview while dragging.
   Long-press a build button to cancel it. **»** in the top bar hides the side panel (build menu + minimap,
   remembered in `user://prefs.json`); **« BUILD** shows it again and reads **« READY** when a building waits to be placed.
   While hidden, top-bar chips show each busy production line (tap a ready building to place it). **MAP** opens a large
