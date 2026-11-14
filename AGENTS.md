@@ -44,6 +44,18 @@
 - New sounds (`shard`, `geode`, `burrow`, `ack_choir`) are in `tools/synth.py`. Re-rendering every sound on another
   numpy version changes the old files slightly, so copy only the new ones into `sfx/`.
 
+## Self-update (`godot/scripts/updater.gd`, Guillaume 2026-11-14)
+
+- Installed games update themselves: the `Updater` autoload (listed FIRST in `project.godot`) fetches `version.json`
+  from the build's Pages folder on launch and on resume, downloads the newer `aurite-front.pck` into `user://update/`,
+  and mounts it at the next launch in its `_init`, before any other game script loads. The menu's top-right line shows
+  the build and status; tapping it restarts into a downloaded update. Saves in `user://` are untouched.
+- A pack only fits its "shell": the engine version, `project.godot`, `export_presets.cfg`, `updater.gd`, the icons and
+  the splash (CI hashes them into `build.json`/`version.json`). Changing any of them means installed games ask for the
+  new APK instead, so avoid touching them casually. `updater.gd` must not use other game scripts or classes.
+- A pack that fails to start twice is dropped (back to the APK). Locally `build.json` has build 0, so the updater is
+  off; `AF_UPDATE=1` forces it on (with a `url` in `build.json`), `AF_UPDATE=0` turns it off.
+
 ## CI (`.github/workflows/`)
 
 - **Headless sim** (`sim.yml`): `godot --headless --path godot tests/sim_test.tscn`. Godot exits 0 on script

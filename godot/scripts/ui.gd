@@ -383,7 +383,14 @@ func _build_overlays() -> void:
 	var bar := HBoxContainer.new(); c.add_child(bar)
 	bar.add_child(eyebrow("Field command  //  Sable valley theatre", W_SAND))
 	var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL; bar.add_child(sp)
-	bar.add_child(eyebrow("Secure channel", W_GREEN))
+	# build number and self-update status (scripts/updater.gd); tap to check, restart or get the new app
+	var up := Button.new(); up.flat = true; up.focus_mode = Control.FOCUS_NONE; up.add_theme_font_override("font", f_wide); up.add_theme_font_size_override("font_size", 11)
+	up.custom_minimum_size.y = 28; up.pressed.connect(func(): Updater.act()); bar.add_child(up)
+	var upd := func():
+		up.text = Updater.label().to_upper()
+		var col: Color = {"ready": C_AUR, "apk": C_AUR, "downloading": W_SAND, "checking": W_SAND, "offline": C_DIM, "off": C_DIM}.get(Updater.status, W_GREEN)
+		for k in ["font_color", "font_hover_color", "font_pressed_color"]: up.add_theme_color_override(k, col)
+	Updater.changed.connect(upd); upd.call()
 	var cols := HBoxContainer.new(); cols.add_theme_constant_override("separation", 28); cols.size_flags_vertical = Control.SIZE_EXPAND_FILL; c.add_child(cols)
 	var lc := VBoxContainer.new(); lc.size_flags_horizontal = Control.SIZE_EXPAND_FILL; lc.size_flags_stretch_ratio = 0.9; lc.add_theme_constant_override("separation", 10); cols.add_child(lc)
 	var ih := HBoxContainer.new(); ih.add_theme_constant_override("separation", 12); lc.add_child(ih)
