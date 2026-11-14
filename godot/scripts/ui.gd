@@ -432,6 +432,19 @@ func _build_overlays() -> void:
 	var go := cta("Begin mission", func(): main.begin_mission()); go.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(go)
 	var bk := ghost("Back", func(): main.show_start(), 52); bk.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(bk)
 
+## Boot splash art (AF_MODE=splash renders it to res://splash.png).
+func build_splash() -> void:
+	var c := _overlay("splash", 720)
+	var bg: WarBG = overlays.splash.get_child(0); bg.hero = true; bg.t = 3.0
+	c.alignment = BoxContainer.ALIGNMENT_CENTER; c.add_theme_constant_override("separation", 8)
+	var ins := Insignia.new(); ins.custom_minimum_size = Vector2(96, 96); ins.size_flags_horizontal = Control.SIZE_SHRINK_CENTER; c.add_child(ins)
+	var e := eyebrow("Vanguard  vs  Ashen Pact"); e.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; e.add_theme_font_size_override("font_size", 14); c.add_child(e)
+	var tl := VBoxContainer.new(); tl.add_theme_constant_override("separation", -26); c.add_child(tl)
+	for w in [["AURITE", W_KHAKI], ["FRONT", C_ACC]]:
+		var l := lbl(w[0], f_title, 110, w[1]); l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; tl.add_child(l)
+	var hz := Hazard.new(); hz.stripe = true; hz.custom_minimum_size = Vector2(440, 10); hz.size_flags_horizontal = Control.SIZE_SHRINK_CENTER; c.add_child(hz)
+	var sub := lbl("THE WAR FOR AURITE", f_wide, 14, W_SAND); sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; c.add_child(sub)
+
 func show_overlay(nm: String) -> void:
 	for k in overlays: overlays[k].visible = k == nm
 
@@ -503,9 +516,10 @@ func tick(dt: float) -> void:
 ## smoke, embers, wire). Without `full` it is only a dark veil over the paused game.
 class WarBG extends Control:
 	var full := true
+	var hero := false   # splash art: crossed searchlights, big tanks in the foreground, frozen frame
 	var t := 0.0
 	func _process(dt: float) -> void:
-		if full and is_visible_in_tree():
+		if full and not hero and is_visible_in_tree():
 			t += dt; queue_redraw()
 	static func _h(i: float) -> float:
 		return fposmod(sin(i * 127.1 + 311.7) * 43758.5453, 1.0)
@@ -556,9 +570,16 @@ class WarBG extends Control:
 		for i in 2:
 			var o := Vector2(s.x * (0.58 + 0.3 * i), hz + 26 * u)
 			var a := -PI / 2 + sin(t * (0.23 + 0.07 * i) + i * 2.0) * 0.6
+			var al := 0.16
+			if hero:
+				o = Vector2(s.x * (0.3 + 0.4 * i), hz + 30 * u); a = -PI / 2 + (0.42 if i == 0 else -0.42); al = 0.2
 			var L := s.y * 1.1; var w := 0.07
 			draw_polygon(PackedVector2Array([o, o + Vector2(cos(a - w), sin(a - w)) * L, o + Vector2(cos(a + w), sin(a + w)) * L]),
-				PackedColorArray([Color(1, 0.93, 0.75, 0.16), Color(1, 0.93, 0.75, 0.0), Color(1, 0.93, 0.75, 0.0)]))
+				PackedColorArray([Color(1, 0.93, 0.75, al), Color(1, 0.93, 0.75, 0.0), Color(1, 0.93, 0.75, 0.0)]))
+		if hero:
+			for fx in [0.12, 0.88]:
+				for k in 8:
+					draw_circle(Vector2(s.x * fx, hz - 4 * u), (90 - k * 10) * u, Color(1, 0.5 + k * 0.04, 0.18, 0.045))
 		# shell bursts on the horizon
 		for i in 3:
 			var ph := t * 0.55 + i * 0.37; var k := floorf(ph); var f := ph - k
@@ -614,6 +635,11 @@ class WarBG extends Control:
 				draw_line(Vector2(hx + 10 * u, hy), Vector2(hx - 10 * u, hy - 18 * u), nc, 2.5 * u)
 				draw_line(Vector2(hx, hy + 2 * u), Vector2(hx + 2 * u, hy - 20 * u), nc, 2.5 * u)
 			px += 120 * u
+		if hero:
+			for tk in [[0.84, 3.4, true, 0.06], [0.15, 2.4, false, -0.04]]:
+				var tp := Vector2(s.x * tk[0], float(near.call(s.x * tk[0])) + 6 * u)
+				_tank(tp + Vector2(0, -2.5 * u), tk[1] * u, Color(0.95, 0.42, 0.15, 0.55), tk[2], tk[3])
+				_tank(tp, tk[1] * u, nc, tk[2], tk[3])
 		# embers
 		for i in 46:
 			var sp := (14 + 22 * _h(i + 40)) * u
