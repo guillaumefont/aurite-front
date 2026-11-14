@@ -21,6 +21,10 @@ var brief_i := 0
 var camp_id := "ashen"
 var icons_for := ""
 var headless := false
+## Fingers that drag the map. 2: two-finger drag pans (and pinch zooms), so one finger is free to
+## tap-select, tap-order and drag a selection box (Guillaume, 2026-11-14). 1: the old scheme, one-finger
+## drag pans and the round button switches to box selection.
+const PAN_FINGERS := 2
 
 # input state
 var ptrs := {}
@@ -41,11 +45,13 @@ func _ready() -> void:
 	randomize()
 	S = Sim.new(); S.host = self
 	V = View3D.new(); V.S = S; add_child(V)
-	V.panel_px = UI.PANEL_W
 	var layer := CanvasLayer.new(); add_child(layer)
 	U = UI.new(); U.main = self; layer.add_child(U); U.build()
 	A = GameAudio.new(); add_child(A)
 	U.set_tab("bld")
+	U.set_panel(_load_prefs().get("panel", true))
+	V.panel_px = U.panel_px()
+	U.mode_btn.visible = PAN_FINGERS == 1
 	show_start()
 	if not headless: render_icons("vanguard")
 	get_viewport().size_changed.connect(_on_resize)
@@ -91,7 +97,33 @@ func _apply_safe() -> void:
 	if ins == safe_last: return
 	safe_last = ins
 	U.set_insets(ins.position.x, ins.position.y, ins.size.x, ins.size.y)
-	V.panel_px = UI.PANEL_W + ins.size.x
+	V.panel_px = U.panel_px()
+
+## Hide or show the side panel (build menu and minimap) to free the screen; remembered between games.
+func toggle_panel() -> void:
+	var anchor := Vector2(100, V.view_rect().size.y / 2); var w := V.s2w(anchor.x, anchor.y)
+	U.set_panel(not U.panel_open); V.panel_px = U.panel_px(); sfx("click")
+	var w2 := V.s2w(anchor.x, anchor.y)  # keep the map still on screen while the view widens
+	V.cam_x += w.x - w2.x; V.cam_y += w.y - w2.y; V.clamp_cam()
+	var p := _load_prefs(); p.panel = U.panel_open; _save_prefs(p)
+	if U.panel_open: refresh_panel(true)
+	else: _panel_alert()
+
+func _load_prefs() -> Dictionary:
+	if not FileAccess.file_exists("user://prefs.json"): return {}
+	var f := FileAccess.open("user://prefs.json", FileAccess.READ)
+	var d = JSON.parse_string(f.get_as_text()) if f else null
+	return d if d is Dictionary else {}
+
+func _save_prefs(p: Dictionary) -> void:
+	var f := FileAccess.open("user://prefs.json", FileAccess.WRITE)
+	if f: f.store_string(JSON.stringify(p))
+
+## While the panel is hidden its button lights up when a building is ready to place.
+func _panel_alert() -> void:
+	var ready: bool = not U.panel_open and S.teams.size() > 0 and S.teams[0].prod.bld.ready
+	U.set_on(U.btn.panel, ready)
+	if not U.panel_open: U.btn.panel.text = "« READY" if ready else "« BUILD"
 
 # ---------------- host interface for the simulation ----------------
 func toast(msg: String, kind := "") -> void:
@@ -254,7 +286,7 @@ func new_game(d: String, opt: Dictionary) -> void:
 	U.obj_box.visible = S.mission != null
 	if S.mission: toast(S.mission.title, "gold")
 	else:
-		toast("Tap the round button to box-select units", "gold")
+		toast("Two fingers move the map · drag one finger to box-select" if PAN_FINGERS == 2 else "Tap the round button to box-select units", "gold")
 		get_tree().create_timer(3.5).timeout.connect(func(): if S.time < 20 and not S.over: toast("Build a Reactor, then a " + D.BLD[D.sub(S.teams[0].fac, "refinery")].name, "gold"))
 	A.music_start()
 
@@ -359,6 +391,7 @@ func refresh_panel(_force := false) -> void:
 		U.sw_name.text = sw.d.name.split(" ")[0].to_upper()
 		U.sw_time.text = "READY" if sw.rdy else D.fmt(sw.d.charge - sw.ch)
 	if S.mission: U.obj_l.text = S.obj_text()
+	_panel_alert()
 
 func hud_tick(dt: float) -> void:
 	var tm: Dictionary = S.teams[0]
@@ -601,16 +634,20 @@ func command(hit: Ent, wx: float, wy: float, units: Array, face = null, width :=
 	sfx("ack"); amove = false; update_cmd()
 
 func box_select(x0: float, y0: float, x1: float, y1: float) -> void:
-	V.update_cam()
-	var r := Rect2(Vector2(min(x0, x1), min(y0, y1)), Vector2(abs(x1 - x0), abs(y1 - y0))).grow(6)
-	var us := S.ents.filter(func(e):
-		if not e.alive or e.kind != "u" or e.team != 0 or e.captive or e.intun > 0: return false
-		var p := V.w2s(e.x, e.y, S.h_at(e.x, e.y) + .2 + (D.ALT if e.d.air else 0.0))
-		return p.z > 0 and r.has_point(Vector2(p.x, p.y)))
+	var us := _box_units(Vector2(x0, y0), Vector2(x1, y1))
 	var cb := us.filter(func(u): return not u.d.harv)
 	if cb.size(): us = cb
 	S.set_sel(us)
 	if us.size(): sfx("click")
+
+func _box_units(a: Vector2, b: Vector2) -> Array:
+	V.update_cam()
+	var x0 := a.x; var y0 := a.y; var x1 := b.x; var y1 := b.y
+	var r := Rect2(Vector2(min(x0, x1), min(y0, y1)), Vector2(abs(x1 - x0), abs(y1 - y0))).grow(6)
+	return S.ents.filter(func(e):
+		if not e.alive or e.kind != "u" or e.team != 0 or e.captive or e.intun > 0: return false
+		var p := V.w2s(e.x, e.y, S.h_at(e.x, e.y) + .2 + (D.ALT if e.d.air else 0.0))
+		return p.z > 0 and r.has_point(Vector2(p.x, p.y)))
 
 # ---------------- input ----------------
 func _in_view(p: Vector2) -> bool:
@@ -654,7 +691,9 @@ func _down(id: int, p: Vector2, mouse: bool, button: int) -> void:
 	if ptrs.size() == 2:
 		var v := ptrs.values(); var a: Vector2 = v[0]; var b: Vector2 = v[1]
 		var m := (a + b) / 2
-		gest = {"mode": "pinch", "d0": max(1.0, a.distance_to(b)), "z0": V.cam_z, "w": V.s2w(m.x, m.y)}
+		# the world point under the fingers' midpoint stays under it: moving both fingers pans the map;
+		# spreading them zooms, but only past a dead zone so a two-finger pan does not drift the zoom
+		gest = {"mode": "pinch", "d0": max(1.0, a.distance_to(b)), "z0": V.cam_z, "w": V.s2w(m.x, m.y), "zoom": PAN_FINGERS == 1, "upd": {}}
 		_clear_preview(); return
 	if ptrs.size() > 2: return
 	gest = {"mode": "pending", "s": p, "e": p, "l": p, "mouse": mouse, "btn": button, "t0": Time.get_ticks_msec()}
@@ -671,14 +710,22 @@ func _move(id: int, p: Vector2) -> void:
 		if ptrs.size() < 2: return
 		var v := ptrs.values(); var a: Vector2 = v[0]; var b: Vector2 = v[1]
 		var m := (a + b) / 2
-		V.cam_z = gest.z0 * a.distance_to(b) / gest.d0; V.clamp_cam()
+		var dd: float = max(1.0, a.distance_to(b))
+		# fingers report one at a time: judge the spread only once both have moved, or a fast pan
+		# (one finger ahead of the other) looks like a pinch
+		gest.upd[id] = true
+		if not gest.zoom and gest.upd.size() >= 2:
+			gest.upd = {}
+			if abs(dd / gest.d0 - 1) > .12: gest.zoom = true; gest.d0 = dd; gest.z0 = V.cam_z
+		if gest.zoom: V.cam_z = gest.z0 * dd / gest.d0; V.clamp_cam()
 		var w2 := V.s2w(m.x, m.y); V.cam_x += gest.w.x - w2.x; V.cam_y += gest.w.y - w2.y; V.clamp_cam()
 		return
-	var moved: bool = p.distance_to(gest.s) > 9
+	# a finger wobbles more than a mouse: a touch must travel further before a tap turns into a drag
+	var moved: bool = p.distance_to(gest.s) > (9.0 if gest.mouse else 14.0)
 	if gest.mode == "pending" and moved:
 		if gest.mouse: gest.mode = "box"
 		elif placing != null: gest.mode = "ghost"
-		elif box_mode: gest.mode = "box"
+		elif box_mode or PAN_FINGERS == 2: gest.mode = "box"
 		else: gest.mode = "pan"
 	elif gest.mode == "rpending" and moved:
 		gest.mode = "face" if (gest.btn == MOUSE_BUTTON_RIGHT and _sel_movers().size() and placing == null) else "pan"
@@ -740,7 +787,11 @@ func _up(id: int, p: Vector2, cancel: bool) -> void:
 			elif gest.btn == MOUSE_BUTTON_RIGHT: tap(p.x, p.y, true)
 		"lp": S.set_sel([])
 		"box":
-			box_select(gest.s.x, gest.s.y, gest.e.x, gest.e.y)
+			var sz: Vector2 = (gest.e - gest.s).abs()
+			if not gest.mouse and _box_units(gest.s, gest.e).is_empty():
+				# an empty box from a finger keeps the selection; a short one was a shaky tap
+				if sz.x < 48 and sz.y < 48: tap(gest.s.x, gest.s.y, false)
+			else: box_select(gest.s.x, gest.s.y, gest.e.x, gest.e.y)
 			if box_mode and not gest.mouse: box_mode = false; update_cmd()
 		"face":
 			var fp = _face_params()
@@ -1260,18 +1311,42 @@ func _input_test() -> void:
 	print("INPUT face gesture mode=", gest.mode if gest else "none", " preview=", preview_slots.size())
 	_touch(0, a + Vector2(180, 0), false); await get_tree().process_frame
 	print("INPUT face order: ", S.sel.map(func(e): return [e.order, snappedf(e.face if e.face != null else -9.0, 0.01)]))
-	# pan
-	var cx := V.cam_x
+	# one-finger drag over the map: a box, not a pan (an empty box keeps the selection)
+	var cx := V.cam_x; var nsel := S.sel.size()
 	_touch(0, Vector2(400, 300), true); await get_tree().process_frame
 	for k in 5:
-		_drag(0, Vector2(400 - 40 * (k + 1), 300)); await get_tree().process_frame
-	_touch(0, Vector2(200, 300), false); await get_tree().process_frame
-	print("INPUT pan dx=", V.cam_x - cx)
+		_drag(0, Vector2(400 - 40 * (k + 1), 300 + 4 * k)); await get_tree().process_frame
+	print("INPUT one-finger drag mode=", gest.mode if gest else "none")
+	_touch(0, Vector2(200, 316), false); await get_tree().process_frame
+	print("INPUT one-finger drag pan dx=", V.cam_x - cx, " sel ", nsel, " -> ", S.sel.size())
+	# box around the rifle selects it
+	var rp3 := V.w2s(r.x, r.y, S.h_at(r.x, r.y) + .2)
+	_touch(0, Vector2(rp3.x - 60, rp3.y - 60), true); await get_tree().process_frame
+	for k in 4:
+		_drag(0, Vector2(rp3.x - 60 + 30 * (k + 1), rp3.y - 60 + 30 * (k + 1))); await get_tree().process_frame
+	_touch(0, Vector2(rp3.x + 60, rp3.y + 60), false); await get_tree().process_frame
+	print("INPUT box sel=", S.sel.map(func(e): return e.type))
+	# two-finger drag pans, without zooming
+	var z0 := V.cam_z
+	_touch(0, Vector2(380, 280), true); _touch(1, Vector2(420, 320), true); await get_tree().process_frame
+	for k in 5:
+		var o := Vector2(-40 * (k + 1), 0)
+		_drag(0, Vector2(380, 280) + o); _drag(1, Vector2(420, 320) + o + Vector2(k, 0)); await get_tree().process_frame
+	_touch(0, Vector2(180, 280), false); _touch(1, Vector2(224, 320), false); await get_tree().process_frame
+	print("INPUT two-finger pan dx=", V.cam_x - cx, " zoom ", z0, " -> ", V.cam_z)
+	# hide and show the side panel
+	var vw := V.view_rect().size.x
+	toggle_panel(); await get_tree().process_frame
+	print("INPUT panel hidden: view ", vw, " -> ", V.view_rect().size.x, " panel=", U.panel.visible, " btn=", U.btn.panel.text)
+	await _shot(OS.get_environment("AF_SHOT") + "/03_panel_hidden.png")
+	toggle_panel(); await get_tree().process_frame
+	print("INPUT panel shown: view ", V.view_rect().size.x, " panel=", U.panel.visible)
 	# pinch
 	var z := V.cam_z
 	_touch(0, Vector2(300, 300), true); _touch(1, Vector2(500, 300), true); await get_tree().process_frame
-	_drag(0, Vector2(250, 300)); _drag(1, Vector2(550, 300)); await get_tree().process_frame
-	_touch(0, Vector2(250, 300), false); _touch(1, Vector2(550, 300), false); await get_tree().process_frame
+	for k in 10:
+		_drag(0, Vector2(300 - 10 * (k + 1), 300)); _drag(1, Vector2(500 + 10 * (k + 1), 300)); await get_tree().process_frame
+	_touch(0, Vector2(200, 300), false); _touch(1, Vector2(600, 300), false); await get_tree().process_frame
 	print("INPUT pinch zoom ", z, " -> ", V.cam_z)
 	# build a reactor through the panel
 	click_item("bld", "power")

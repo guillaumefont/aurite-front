@@ -27,10 +27,13 @@ miners and deserters from both sides who stayed too long near raw aurite undergr
 Copy it to the phone and open it (allow "install unknown apps"). It installs next to the older WebView app.
 
 ## Controls
-- **Touch**: drag to scroll, pinch to zoom, tap a unit to select, tap ground or an enemy to order.
-  Round button = box-select mode. **Double-tap a unit** selects every unit of that type on screen.
+- **Touch**: **two-finger drag** moves the map, pinch to zoom. Tap a unit to select it, then tap ground to move
+  or an enemy to attack; tap another own unit to switch to it. **One-finger drag** box-selects (an empty or tiny box
+  keeps the selection / counts as a tap). Hold and let go deselects. `main.gd PAN_FINGERS = 1` brings back
+  one-finger panning and the round box-select button. **Double-tap a unit** selects every unit of that type on screen.
   **Hold, then drag** at the destination to place a formation along the drag line; it faces away from you for a left-to-right drag. You see a preview while dragging.
-  Long-press a build button to cancel it.
+  Long-press a build button to cancel it. **»** in the top bar hides the side panel (build menu + minimap,
+  remembered in `user://prefs.json`); **« BUILD** shows it again and reads **« READY** when a building waits to be placed.
 - **Mouse**: click to select or command, drag to box-select, **double-click** for the whole type,
   **right-drag** to face a formation, middle-drag or WASD to scroll, wheel to zoom, right-click a build button to cancel.
 
