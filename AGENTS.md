@@ -49,6 +49,14 @@ godot --headless --import
 godot --headless tests/sim_test.tscn   # must end with SIM TEST DONE and no SCRIPT ERROR
 ```
 
+## Building animations
+
+- Build and sell reveal a building with `Models.cut_material()` (a copy of the lit shader that discards above `cut_y`),
+  set as `material_override` only while the animation runs, so finished buildings keep the shared material.
+  Sold and destroyed buildings stay in `View3D.recs` until their animation ends (`Ent.end_kind`, `end_t`).
+- Check them with `AF_SHOT=<dir> AF_MODE=b xvfb-run godot --path godot`. The test pauses the sim, so it moves
+  `S.time` by hand between shots.
+
 ## Audio and UI on phones
 
 - Sounds come from `godot/tools/synth.py` (`python3 tools/synth.py .` from `godot/`). Keep the current levels:

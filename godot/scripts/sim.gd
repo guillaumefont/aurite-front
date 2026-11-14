@@ -718,6 +718,7 @@ func kill(e: Ent) -> void:
 			for x in range(e.tx, e.tx + e.w):
 				if bmap[y * MW + x] == e.id: bmap[y * MW + x] = 0
 		_sync_solid(e.tx, e.ty, e.w, e.h)
+		e.end_kind = "die"; e.end_t = time
 		if e.type == "wall":
 			explode(e.x, e.y, 10); calc_power(); _drop_sel(e); host.on_world_changed(); return
 		for k in e.w * e.h:
@@ -979,14 +980,17 @@ func upd_harv(u: Ent, dt: float) -> void:
 		"unload":
 			u.ang = turn_to(u.ang, -PI / 2, 3 * dt)
 			if not u.ref.alive: u.hs = "ret"; return
-			u.mt -= dt
+			u.mt -= dt; u.ref.unload_t = time
 			if u.mt <= 0:
 				u.mt = 0.1
-				var a: float = min(50.0, u.load); u.load -= a
+				var a: float = min(50.0, u.load); u.load -= a; u.dump += a
 				var tm: Dictionary = teams[u.team]
 				tm.credits += a * (D.DIFF[diff].inc if tm.ai else 1.0)
 				if u.team == 0: stats.mined += int(a)
-				if u.load <= 0: u.load = 0.0; u.hs = "find"
+				if u.load <= 0:
+					u.load = 0.0; u.hs = "find"
+					if u.team == 0: parts.append({"k": "txt", "x": u.ref.x, "y": u.ref.y, "txt": "+%d" % int(u.dump), "c": Color("f0b93f"), "life": 1.6, "max": 1.6, "h": 1.2})
+					u.dump = 0.0
 
 func upd_bld(b: Ent, dt: float) -> void:
 	if b.hit_t > 0: b.hit_t -= dt
@@ -1220,6 +1224,7 @@ func produce_done(tm: Dictionary, type: String) -> void:
 		if x.sel: b = x; break
 	var ex := b.tx + b.w / 2; var ey := b.ty + b.h
 	var u := spawn_unit(tm.id, type, ex * T + 16, ey * T + 16)
+	b.out_t = time
 	if tm.id == 0: stats.built += 1
 	if d.harv: u.hs = "find"
 	else:
@@ -1269,12 +1274,13 @@ func tile_ok(tx: int, ty: int) -> bool:
 func sell(b: Ent) -> int:
 	var ref := int(floor(b.d.cost * 0.5 * b.hp / b.max_hp))
 	teams[0].credits += ref
-	b.alive = false; b.sel = false
+	b.alive = false; b.sel = false; b.end_kind = "sell"; b.end_t = time
+	if ref > 0: parts.append({"k": "txt", "x": b.x, "y": b.y, "txt": "+%d" % ref, "c": Color("f0b93f"), "life": 1.8, "max": 1.8, "h": D.BH[b.type] + .3})
 	for y in range(b.ty, b.ty + b.h):
 		for x in range(b.tx, b.tx + b.w):
 			if bmap[y * MW + x] == b.id: bmap[y * MW + x] = 0
 	_sync_solid(b.tx, b.ty, b.w, b.h)
-	for k in 10: parts.append({"k": "smoke", "x": b.tx * T + randf() * b.w * T, "y": b.ty * T + randf() * b.h * T, "vx": (randf() - 0.5) * 30, "vy": -randf() * 10, "life": 0.9, "max": 0.9, "s": 6.0, "c": Color8(150, 140, 120)})
+	for k in 8: parts.append({"k": "smoke", "x": b.tx * T + randf() * b.w * T, "y": b.ty * T + randf() * b.h * T, "vx": (randf() - 0.5) * 30, "vy": -randf() * 10, "life": 0.7, "max": 0.7, "s": 3.5, "c": Color8(196, 184, 156)})
 	calc_power(); host.on_world_changed()
 	return ref
 

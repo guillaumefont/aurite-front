@@ -35,6 +35,10 @@ var rp_t := 0.0
 var busy := false
 var ch := 0.0
 var rdy := false
+var end_kind := ""  # "sell" or "die": the view plays a dismantle or collapse before dropping the model
+var end_t := 0.0
+var out_t := -9.0  # last time a unit rolled out (factory door)
+var unload_t := -9.0  # last time a harvester unloaded here (refinery conveyor)
 
 # units
 var ang := 0.0
@@ -66,4 +70,5 @@ var path_len := 0.0
 var los_t := 0.0
 var los_ok := true
 var los_of: Ent = null
+var dump := 0.0  # aurite delivered in the current unload
 var face = null  # Vector2 facing to adopt when the move ends (formation drag)
