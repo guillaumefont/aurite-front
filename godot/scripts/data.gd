@@ -104,7 +104,16 @@ const FAC_ORDER := ["vanguard", "ashen", "choir"]
 ## "" when the faction has none.
 static func sub(fac: String, t: String) -> String:
 	return FACS[fac].get("sub", {}).get(t, t) if FACS.has(fac) else t
+## Campaign difficulty the player picks on the briefing: shifts the mission's own enemy strength one step and
+## scales enemy starting aurite, waves and scripted attacks.
+const LEVELS := {
+	"easy": {"name": "Easy", "shift": -1, "credits": 0.6, "waves": 0.6, "first": 120},
+	"normal": {"name": "Normal", "shift": 0, "credits": 1.0, "waves": 1.0, "first": 0},
+	"hard": {"name": "Hard", "shift": 1, "credits": 1.3, "waves": 1.3, "first": -40},
+}
+const DIFF_ORDER := ["recruit", "easy", "normal", "hard"]
 const DIFF := {
+	"recruit": {"prod": 0.5, "inc": 0.6, "first": 420, "start": 2500},
 	"easy": {"prod": 0.7, "inc": 0.8, "first": 330, "start": 3000},
 	"normal": {"prod": 1.0, "inc": 1.0, "first": 210, "start": 3000},
 	"hard": {"prod": 1.3, "inc": 1.35, "first": 140, "start": 4000},

@@ -50,6 +50,7 @@ var wst := {}                 # wave state of the current wave plan
 var ev_done := {}
 var m_t := 1.0
 var end_why := ""
+var lvl := "normal"            # campaign difficulty (D.LEVELS)
 
 # ---------------- util ----------------
 static func _u32(v: int) -> int:
@@ -235,7 +236,8 @@ func _sync_solid(tx: int, ty: int, w: int, h: int) -> void:
 func new_game(d: String, opt: Dictionary) -> void:
 	var M = opt.get("mission", null)
 	mission = M
-	diff = M.diff if M else d
+	lvl = opt.get("level", "normal") if M else "normal"
+	diff = (D.DIFF_ORDER[clampi(D.DIFF_ORDER.find(M.diff) + D.LEVELS[lvl].shift, 0, D.DIFF_ORDER.size() - 1)]) if M else d
 	seed = M.seed if M else opt.get("seed", int(Time.get_ticks_msec() % 100000) + randi() % 1000)
 	var pf: String = M.fac if M else opt.get("fac", "vanguard")
 	var ef: String = opt.get("enemy", "") if not M else ""
@@ -253,7 +255,7 @@ func new_game(d: String, opt: Dictionary) -> void:
 	for id in [0, 1]:
 		var prod := {}
 		for c in D.CAT_ORDER: prod[c] = {"cur": "", "prog": 0.0, "paid": 0.0, "ready": false, "queue": [], "left": 0}
-		teams.append({"id": id, "credits": float(M.credits[id] if M else D.DIFF[diff].start), "ai": id == 1,
+		teams.append({"id": id, "credits": float((M.credits[id] * (D.LEVELS[lvl].credits if id == 1 else 1.0)) if M else D.DIFF[diff].start), "ai": id == 1,
 			"fac": pf if id == 0 else ef, "pmade": 0, "pused": 0, "rally": null,
 			"wave": 5, "waveT": 0, "wn": 0, "prod": prod, "noFundsT": 0.0, "earned": 0.0})
 	if D.set_team_colors(teams[0].fac, teams[1].fac): Models.cache.clear()
@@ -1641,7 +1643,7 @@ func ai_think(tm: Dictionary) -> void:
 			if (Vector2(u.x - intr.x, u.y - intr.y).length() < 20 * T and can_hit(u.d, intr)) or u.d.heal:
 				u.order = "amove"; set_path(u, int(intr.x / T), int(intr.y / T))
 		return
-	var first: float = M.aiFirst if (M and M.aiFirst >= 0) else D.DIFF[diff].first
+	var first: float = ((M.aiFirst if M.aiFirst >= 0 else D.DIFF[diff].first) + D.LEVELS[lvl].first) if M else D.DIFF[diff].first
 	if time > first and idle.size() >= tm.wave:
 		var tgt: Ent = null; var bd := 1e9
 		for e in ents:
@@ -1738,9 +1740,15 @@ func send_group(us: Array, go) -> void:
 	if tgt != null and tgt.kind == "u":
 		attack_order(us.filter(func(u): return u.d.dmg > 0 and can_hit(u.d, tgt)), tgt)
 
+## Enemy group size at the chosen campaign difficulty (never drops a group to nothing).
+func scaled(n: int) -> int:
+	if n <= 0: return 0
+	return maxi(1, int(round(n * D.LEVELS[lvl].waves)))
+
 func spawn_group(sp: Dictionary) -> Array:
 	var tm: int = sp.get("team", 1)
-	var us := squad(tm, sp.u, sp.at[0], sp.at[1])
+	var list: Array = sp.u if tm == 0 else sp.u.map(func(p): return [p[0], scaled(p[1])])
+	var us := squad(tm, list, sp.at[0], sp.at[1])
 	if tm == 1: send_group(us, sp.get("go", "base"))
 	return us
 
@@ -1885,7 +1893,7 @@ func do_waves(W: Dictionary, t: float) -> void:
 	var list: Array = []
 	for row in W.list:
 		if wn < row[3]: continue
-		var n := int(row[1] + row[2] * (wn - row[3]))
+		var n := scaled(int(row[1] + row[2] * (wn - row[3])))
 		# wave plans name their units outright: only the faction matters, not the AI's build list (often empty)
 		var wf: String = D.def_of(row[0]).fac
 		if n > 0 and (wf == "" or wf == teams[1].fac): list.append([row[0], n])

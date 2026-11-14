@@ -100,6 +100,11 @@ godot --headless tests/sim_test.tscn   # must end with SIM TEST DONE and no SCRI
   (Guillaume, 2026-11-14); `main.camp_open()`.
 - Wave plans spawn the units they name whatever the mission's `aiTech` says (it is often empty). The test jumps to
   each wave of a wave goal and checks enemies really arrive.
+- Campaign difficulty (Easy / Normal / Hard on the briefing, saved as `_level` in `user://campaigns.json`):
+  `D.LEVELS` shifts the mission's AI tier (`D.DIFF_ORDER`, Easy can reach `recruit`), scales enemy start credits and
+  wave sizes (`Sim.scaled`) and delays or advances the first attack. Balance target: Normal must be beatable on a phone
+  (Guillaume could not beat Kettleford, 2026-11-14), so early missions keep the enemy off tanks and give the player a
+  head start. Check a change with an AI-vs-AI soak (player side driven by `ai_think`) before raising enemy pressure.
 
 ## Audio and UI on phones
 
