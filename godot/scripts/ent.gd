@@ -75,3 +75,9 @@ var tag := ""          # mission tag: "vip", "hero", a post tag such as "guns"
 var captive := false   # a prisoner: does nothing, cannot be hurt or selected until a friendly unit reaches it
 var post := false      # holds its position: the AI never pulls it into an attack wave
 var face = null  # Vector2 facing to adopt when the move ends (formation drag)
+# Hollow Choir
+var under := false     # burrowed (a moving sapper, or a unit in a tunnel): cannot be seen by the enemy, targeted or hurt
+var intun := 0.0       # seconds left travelling through a tunnel (hidden, frozen at the entrance)
+var tun = null         # tunnel plan {a, b, dest, order}: walk to burrow a, come out of burrow b, go on to dest
+var aura_t := 0.0      # inside a Cantor's aura for this long: fires faster, mends slowly
+var gt := 0.0          # crystal garden: time since the last harvest pulse

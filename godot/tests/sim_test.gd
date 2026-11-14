@@ -107,5 +107,111 @@ func _ready():
 	s.formation = true
 	if paced.size():
 		print("FORMATION OFF TEST FAILED"); get_tree().quit(1); return
+	if not choir_tests(s, h): get_tree().quit(1); return
 	print("SIM TEST DONE")
 	get_tree().quit()
+
+func _fail(msg: String) -> bool:
+	print("CHOIR TEST FAILED: ", msg); return false
+
+## The Hollow Choir: AI soaks on both sides, then each of its systems on its own.
+func choir_tests(s, h) -> bool:
+	for pair in [["choir", "vanguard"], ["ashen", "choir"]]:
+		var t0 = Time.get_ticks_msec()
+		s.new_game("normal", {"fac": pair[0], "enemy": pair[1]})
+		if s.teams[0].fac != pair[0] or s.teams[1].fac != pair[1] or D.TEAMC[0] != D.FCOL[pair[0]]: return _fail("factions or colours not set")
+		var ci: int = 0 if pair[0] == "choir" else 1
+		var seen := {}   # every type the Choir side had at some point
+		for i in 20 * 60 * 9:
+			s.step(0.05)
+			if i % 20 == 0:
+				s.ai_think(s.teams[0])
+				for e in s.ents:
+					if e.team == ci: seen[e.type] = true
+			if s.over: break
+		var c = {}
+		for e in s.ents: c[str(e.team) + e.type] = c.get(str(e.team) + e.type, 0) + 1
+		print("choir soak ", pair, " ms ", Time.get_ticks_msec() - t0, " t=", int(s.time), " over=", s.over, " credits ", int(s.teams[0].credits), "/", int(s.teams[1].credits), " ", c)
+		print("  the Choir had: ", seen.keys())
+		if seen.has("refinery") or seen.has("harv") or seen.has("rifle"): return _fail("the Choir got a refinery, harvester or riflemen")
+		if not seen.has("garden") or not seen.has("burrow"): return _fail("the Choir AI built no garden or no burrow")
+		if not (seen.has("thrall") or seen.has("skitter") or seen.has("mantis")): return _fail("the Choir AI trained no army")
+	# a fixed map for the unit tests
+	s.new_game("normal", {"fac": "choir", "enemy": "vanguard", "seed": 4242})
+	s.teams[1].credits = 0
+	var hq = s.find_hq(0)
+	if not s.avail(0, "thrall") or s.avail(0, "rifle") or s.avail(0, "refinery") or not s.avail(0, "garden"): return _fail("availability")
+	# the garden stands in for a refinery in requirements
+	s.add_building(0, "power", hq.tx + 4, hq.ty)
+	if s.has_req(0, ["refinery"]): return _fail("refinery requirement met without a garden")
+	# garden: yields on its own and drinks nearby ore
+	var oi := -1
+	for i in D.MW * D.MH:
+		if s.ore[i] > 0 and Vector2(i % D.MW - hq.tx, i / D.MW - hq.ty).length() < 14: oi = i; break
+	if oi < 0: return _fail("no ore near the base on the test map")
+	var gp = null
+	for r in range(1, 6):
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				if gp == null and s.can_place(0, "garden", oi % D.MW + dx, oi / D.MW + dy, false): gp = Vector2i(oi % D.MW + dx, oi / D.MW + dy)
+	if gp == null:
+		# place it by hand next to the ore; the garden test is about growth, not placement rules
+		gp = Vector2i(oi % D.MW + 2, oi / D.MW)
+	var g = s.add_building(0, "garden", gp.x, gp.y)
+	if not s.has_req(0, ["refinery"]): return _fail("garden does not count as a refinery")
+	var ore0 := 0
+	for i in D.MW * D.MH: ore0 += s.ore[i]
+	var cr0: float = s.teams[0].credits
+	for i in 20 * 9: s.step(0.05)
+	var ore1 := 0
+	for i in D.MW * D.MH: ore1 += s.ore[i]
+	print("garden: +", int(s.teams[0].credits - cr0), " credits, ore drained ", ore0 - ore1)
+	if s.teams[0].credits - cr0 < 40: return _fail("garden gave nothing")
+	# tunnels: a far burrow, units walk into the yard and come out of the burrow
+	var bp := Vector2i(hq.tx + 22, hq.ty - 22)
+	var bur = s.add_building(0, "burrow", bp.x, bp.y)
+	var us := []
+	for i in 4: us.append(s.spawn_unit(0, "thrall", (hq.tx + 1 + i) * D.T + 16, (hq.ty + 4) * D.T + 16))
+	s.group_move(us, (bp.x + 1) * D.T, (bp.y + 6) * D.T, "move")
+	if us.filter(func(u): return u.tun != null).is_empty(): return _fail("no unit planned a tunnel trip")
+	var went := false
+	for i in 20 * 25:
+		s.step(0.05)
+		for u in us:
+			if u.intun > 0: went = true
+	var arrived := us.filter(func(u): return Vector2(u.x - (bp.x + 1) * D.T, u.y - (bp.y + 6) * D.T).length() < D.T * 4)
+	print("tunnel: underground=", went, " arrived ", arrived.size(), "/", us.size(), " in 25 s")
+	if not went or arrived.size() < 3: return _fail("tunnel trip")
+	# a unit in a tunnel cannot be hit; a moving sapper is burrowed
+	var sp = s.spawn_unit(0, "sapper", (hq.tx + 2) * D.T, (hq.ty + 6) * D.T)
+	s.group_move([sp], (hq.tx + 9) * D.T, (hq.ty + 6) * D.T, "move")
+	for i in 10: s.step(0.05)
+	var en = s.spawn_unit(1, "rifle", sp.x + D.T * 2, sp.y)
+	if not sp.under or s.find_target(en, D.T * 6) == sp: return _fail("moving sapper not burrowed")
+	en.alive = false
+	# geode lobber: splash plus a lingering shard field
+	var gl = s.spawn_unit(0, "geode", (hq.tx + 4) * D.T, (hq.ty + 12) * D.T)
+	var vic = s.spawn_unit(1, "rifle", gl.x + D.T * 6, gl.y)
+	vic.hp = 9999; vic.max_hp = 9999
+	gl.target = vic; gl.order = "attack"
+	var saw_field := false
+	for i in 20 * 8:
+		s.step(0.05)
+		if s.fields.size(): saw_field = true
+	print("geode: fields seen=", saw_field, " victim hp ", int(vic.hp))
+	if not saw_field or vic.hp >= 9999: return _fail("geode lobber left no shard field")
+	vic.alive = false; gl.alive = false
+	# the Cantor: one at a time, lifts nearby units
+	var ca = s.spawn_unit(0, "cantor", (hq.tx + 6) * D.T, (hq.ty + 8) * D.T)
+	var th = s.spawn_unit(0, "thrall", ca.x + D.T, ca.y)
+	for i in 30: s.step(0.05)
+	if th.aura_t <= 0: return _fail("Cantor aura")
+	if not s.at_limit(0, "cantor"): return _fail("a second Cantor allowed")
+	# Chorus Well: a burst and a long shard field
+	var ch = s.add_building(0, "chorus", hq.tx - 6, hq.ty + 6)
+	s.fields = []
+	s.launch_sw(ch, (hq.tx + 20) * D.T, (hq.ty - 10) * D.T)
+	for i in 20 * 4: s.step(0.05)
+	if s.fields.filter(func(f): return f.r > D.T * 3).is_empty(): return _fail("Chorus Well left no field")
+	print("choir tests ok")
+	return true
