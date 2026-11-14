@@ -19,11 +19,14 @@ const ALT := 1.6
 var BLD := {
 	"hq": {"name": "Command Yard", "w": 3, "h": 3, "hp": 1600, "cost": 0, "time": 1, "pwr": 20, "sight": 7, "req": []},
 	"power": {"name": "Reactor", "w": 2, "h": 2, "hp": 600, "cost": 300, "time": 7, "pwr": 100, "sight": 4, "req": ["hq"]},
-	"refinery": {"name": "Refinery", "w": 3, "h": 3, "hp": 1000, "cost": 1400, "time": 13, "pwr": -30, "sight": 5, "req": ["power"]},
+	"refinery": {"name": "Refinery", "no": ["choir"], "w": 3, "h": 3, "hp": 1000, "cost": 1400, "time": 13, "pwr": -30, "sight": 5, "req": ["power"]},
+	# Hollow Choir: no refinery or harvesters. A garden grows aurite on its own and drinks the ore around it.
+	"garden": {"name": "Crystal Garden", "fac": "choir", "w": 2, "h": 2, "hp": 850, "cost": 1000, "time": 11, "pwr": -20, "sight": 5, "req": ["power"], "grow": true},
 	"barracks": {"name": "Barracks", "w": 2, "h": 2, "hp": 700, "cost": 400, "time": 8, "pwr": -20, "sight": 5, "req": ["power"]},
 	"factory": {"name": "War Factory", "w": 3, "h": 3, "hp": 1100, "cost": 1600, "time": 15, "pwr": -30, "sight": 5, "req": ["refinery"]},
 	"turret": {"name": "Sentry Gun", "w": 1, "h": 1, "hp": 500, "cost": 500, "time": 8, "pwr": -15, "sight": 7, "req": ["barracks"], "weapon": "shell", "dmg": 30, "range": 6.0, "rof": 1.3},
 	"repair": {"name": "Repair Bay", "w": 3, "h": 3, "hp": 900, "cost": 900, "time": 11, "pwr": -25, "sight": 4, "req": ["factory"]},
+	"burrow": {"name": "Burrow", "fac": "choir", "w": 2, "h": 2, "hp": 450, "cost": 450, "time": 6, "pwr": 0, "sight": 6, "req": ["barracks"], "tun": true},
 	"wall": {"name": "Barrier ×4", "w": 1, "h": 1, "hp": 450, "cost": 160, "time": 4, "pwr": 0, "sight": 1, "req": ["barracks"], "kit": 4},
 	"flak": {"name": "Flak Nest", "w": 1, "h": 1, "hp": 450, "cost": 600, "time": 8, "pwr": -20, "sight": 8, "req": ["barracks"], "weapon": "flak", "dmg": 24, "range": 7.5, "rof": 0.55, "antiAir": true},
 	"comms": {"name": "Comms Array", "w": 2, "h": 2, "hp": 700, "cost": 1000, "time": 10, "pwr": -40, "sight": 10, "req": ["refinery"]},
@@ -31,12 +34,14 @@ var BLD := {
 	"tech": {"name": "Tech Lab", "w": 2, "h": 2, "hp": 800, "cost": 1500, "time": 14, "pwr": -60, "sight": 5, "req": ["factory", "comms"]},
 	"bastion": {"name": "Bastion Cannon", "fac": "vanguard", "w": 2, "h": 2, "hp": 1250, "cost": 1400, "time": 14, "pwr": -50, "sight": 9, "req": ["tech"], "weapon": "shell", "dmg": 78, "range": 8.5, "rof": 2.4},
 	"pylon": {"name": "Arc Pylon", "fac": "ashen", "w": 1, "h": 1, "hp": 700, "cost": 1200, "time": 12, "pwr": -75, "sight": 7, "req": ["tech"], "weapon": "arc", "dmg": 62, "range": 5.5, "rof": 1.9, "needPower": true},
+	"spire": {"name": "Shard Spire", "fac": "choir", "w": 1, "h": 1, "hp": 650, "cost": 900, "time": 10, "pwr": -40, "sight": 7, "req": ["tech"], "weapon": "shard", "dmg": 24, "range": 6.5, "rof": 0.5},
 	"skyfall": {"name": "Skyfall Battery", "fac": "vanguard", "w": 3, "h": 3, "hp": 1500, "cost": 3000, "time": 25, "pwr": -100, "sight": 5, "req": ["tech"], "sw": true, "charge": 240.0},
 	"rift": {"name": "Rift Engine", "fac": "ashen", "w": 3, "h": 3, "hp": 1500, "cost": 3000, "time": 25, "pwr": -100, "sight": 5, "req": ["tech"], "sw": true, "charge": 240.0},
+	"chorus": {"name": "Chorus Well", "fac": "choir", "w": 3, "h": 3, "hp": 1500, "cost": 3000, "time": 25, "pwr": -100, "sight": 5, "req": ["tech"], "sw": true, "charge": 240.0},
 }
 
 var UN := {
-	"rifle": {"name": "Rifleman", "cat": "inf", "cost": 100, "time": 4, "hp": 60, "spd": 1.15, "range": 3.8, "sight": 5, "dmg": 9, "rof": 0.75, "weapon": "bullet", "armor": "inf", "r": 6, "req": ["barracks"]},
+	"rifle": {"name": "Rifleman", "no": ["choir"], "cat": "inf", "cost": 100, "time": 4, "hp": 60, "spd": 1.15, "range": 3.8, "sight": 5, "dmg": 9, "rof": 0.75, "weapon": "bullet", "armor": "inf", "r": 6, "req": ["barracks"]},
 	"lancer": {"name": "Lancer", "cat": "inf", "cost": 250, "time": 6, "hp": 55, "spd": 1.0, "range": 5, "sight": 6, "dmg": 34, "rof": 2.2, "weapon": "rocket", "armor": "inf", "r": 6, "req": ["barracks"]},
 	"ranger": {"name": "Ranger", "fac": "vanguard", "cat": "inf", "cost": 400, "time": 7, "hp": 55, "spd": 1.1, "range": 7, "sight": 8, "dmg": 48, "rof": 2.3, "weapon": "snipe", "armor": "inf", "r": 6, "req": ["barracks", "comms"]},
 	"pyro": {"name": "Pyro", "fac": "ashen", "cat": "inf", "cost": 300, "time": 6, "hp": 85, "spd": 1.05, "range": 2.3, "sight": 5, "dmg": 13, "rof": 0.3, "weapon": "flame", "armor": "inf", "r": 6, "req": ["barracks", "comms"]},
@@ -50,14 +55,22 @@ var UN := {
 	"tank": {"name": "Warden Tank", "fac": "vanguard", "cat": "veh", "cost": 800, "time": 12, "hp": 420, "spd": 1.7, "range": 4.8, "sight": 6, "dmg": 42, "rof": 1.7, "weapon": "shell", "armor": "heavy", "r": 12, "turret": true, "req": ["factory"]},
 	"medic": {"name": "Field Medic", "cat": "inf", "cost": 150, "time": 5, "hp": 50, "spd": 1.1, "range": 2.2, "sight": 5, "heal": 9, "rof": 0.7, "armor": "inf", "r": 6, "req": ["barracks"]},
 	"engineer": {"name": "Engineer", "cat": "inf", "cost": 500, "time": 8, "hp": 45, "spd": 1.05, "sight": 4, "armor": "inf", "r": 6, "eng": true, "req": ["barracks", "factory"]},
-	"arty": {"name": "Howler Mortar", "cat": "veh", "cost": 950, "time": 13, "hp": 170, "spd": 1.4, "range": 9, "minr": 2.2, "sight": 6, "dmg": 65, "rof": 3.6, "weapon": "arty", "splash": 46, "armor": "light", "r": 12, "turret": true, "req": ["factory", "repair"]},
+	"arty": {"name": "Howler Mortar", "no": ["choir"], "cat": "veh", "cost": 950, "time": 13, "hp": 170, "spd": 1.4, "range": 9, "minr": 2.2, "sight": 6, "dmg": 65, "rof": 3.6, "weapon": "arty", "splash": 46, "armor": "light", "r": 12, "turret": true, "req": ["factory", "repair"]},
+	# Hollow Choir: cheap, quick and fragile. No heavy armour; crystal weapons; the Cantor is their one hero, trained once at a time.
+	"thrall": {"name": "Hollow Thrall", "fac": "choir", "cat": "inf", "cost": 70, "time": 2.5, "hp": 42, "spd": 1.35, "range": 3.4, "sight": 5, "dmg": 7, "rof": 0.6, "weapon": "shard", "armor": "inf", "r": 5, "req": ["barracks"]},
+	"sapper": {"name": "Burrow Sapper", "fac": "choir", "cat": "inf", "cost": 300, "time": 6, "hp": 60, "spd": 1.25, "range": 1.1, "sight": 5, "dmg": 150, "rof": 2.6, "weapon": "charge", "armor": "inf", "r": 6, "burrow": true, "req": ["barracks", "comms"]},
+	"cantor": {"name": "The Cantor", "fac": "choir", "cat": "inf", "cost": 1800, "time": 20, "hp": 520, "spd": 1.2, "range": 5.0, "sight": 8, "dmg": 26, "rof": 0.9, "weapon": "shard", "armor": "inf", "r": 7, "hero": true, "lim": 1, "aura": 4.5, "req": ["barracks", "tech"]},
+	"skitter": {"name": "Skitter", "fac": "choir", "cat": "veh", "cost": 260, "time": 5, "hp": 110, "spd": 4.2, "range": 3.4, "sight": 7, "dmg": 8, "rof": 0.4, "weapon": "shard", "armor": "light", "r": 9, "req": ["factory"]},
+	"mantis": {"name": "Glass Mantis", "fac": "choir", "cat": "veh", "cost": 650, "time": 9, "hp": 280, "spd": 2.4, "range": 4.6, "sight": 6, "dmg": 34, "rof": 1.4, "weapon": "spine", "armor": "light", "r": 11, "req": ["factory"]},
+	"geode": {"name": "Geode Lobber", "fac": "choir", "cat": "veh", "cost": 1100, "time": 13, "hp": 200, "spd": 1.4, "range": 9, "minr": 2.4, "sight": 6, "dmg": 45, "rof": 3.4, "weapon": "geode", "splash": 40, "armor": "light", "r": 12, "turret": true, "req": ["factory", "tech"]},
+	"moth": {"name": "Glassmoth", "fac": "choir", "cat": "air", "cost": 600, "time": 8, "hp": 110, "spd": 3.6, "range": 3.4, "sight": 9, "dmg": 7, "rof": 0.45, "weapon": "shard", "armor": "light", "r": 10, "air": true, "req": ["helipad"]},
 	# heroes and mission-only units: never trained, a mission brings them
 	"vey": {"name": "Kestrel Vey", "fac": "ashen", "cat": "inf", "cost": 0, "time": 1, "hp": 460, "spd": 1.35, "range": 5.2, "sight": 8, "dmg": 30, "rof": 0.7, "weapon": "arc", "armor": "inf", "r": 7, "hero": true, "req": ["never"]},
 	"furnace": {"name": "The Furnace", "fac": "ashen", "cat": "veh", "cost": 0, "time": 1, "hp": 1500, "spd": 1.3, "range": 4.8, "sight": 7, "dmg": 72, "rof": 1.6, "weapon": "arc", "armor": "heavy", "r": 16, "hero": true, "req": ["never"]},
 	"harrow": {"name": "Ilse Harrow", "fac": "vanguard", "cat": "inf", "cost": 0, "time": 1, "hp": 420, "spd": 1.3, "range": 7.5, "sight": 9, "dmg": 58, "rof": 1.4, "weapon": "rail", "armor": "inf", "r": 7, "hero": true, "req": ["never"]},
 	"saint": {"name": "Iron Saint", "fac": "vanguard", "cat": "veh", "cost": 0, "time": 1, "hp": 1900, "spd": 1.15, "range": 5.6, "sight": 7, "dmg": 72, "rof": 1.3, "weapon": "shell", "armor": "heavy", "r": 17, "turret": true, "hero": true, "req": ["never"]},
 	"truck": {"name": "Convoy Truck", "cat": "veh", "cost": 0, "time": 1, "hp": 520, "spd": 1.6, "sight": 5, "armor": "heavy", "r": 13, "req": ["never"]},
-	"harv": {"name": "Harvester", "cat": "veh", "cost": 1200, "time": 14, "hp": 650, "spd": 1.35, "sight": 4, "armor": "heavy", "r": 14, "harv": true, "req": ["factory", "refinery"]},
+	"harv": {"name": "Harvester", "no": ["choir"], "cat": "veh", "cost": 1200, "time": 14, "hp": 650, "spd": 1.35, "sight": 4, "armor": "heavy", "r": 14, "harv": true, "req": ["factory", "refinery"]},
 }
 
 const MOD := {
@@ -66,22 +79,31 @@ const MOD := {
 	"sw": {"inf": 1, "light": 1, "heavy": 1, "bld": 1}, "arty": {"inf": 0.9, "light": 0.8, "heavy": 0.6, "bld": 1.1},
 	"bullet": {"inf": 1, "light": 0.6, "heavy": 0.22, "bld": 0.25}, "rocket": {"inf": 0.35, "light": 1.1, "heavy": 1.15, "bld": 0.75},
 	"shell": {"inf": 0.45, "light": 0.9, "heavy": 1, "bld": 1}, "rail": {"inf": 1.4, "light": 0.9, "heavy": 0.5, "bld": 0.55},
+	"shard": {"inf": 1.15, "light": 1.0, "heavy": 0.3, "bld": 0.35}, "spine": {"inf": 0.4, "light": 1.1, "heavy": 1.05, "bld": 0.6},
+	"geode": {"inf": 1.0, "light": 0.85, "heavy": 0.45, "bld": 0.9}, "charge": {"inf": 0.3, "light": 0.8, "heavy": 0.9, "bld": 1.6},
 }
 const CATS := {
-	"bld": ["power", "refinery", "barracks", "factory", "turret", "flak", "wall", "repair", "comms", "helipad", "tech", "bastion", "pylon", "skyfall", "rift"],
-	"inf": ["rifle", "lancer", "medic", "engineer", "ranger", "pyro"],
-	"veh": ["buggy", "raider", "tank", "scorpion", "arty", "bulwark", "arcc", "harv"],
-	"air": ["skyhawk", "wasp"],
+	"bld": ["power", "refinery", "garden", "barracks", "burrow", "factory", "turret", "flak", "wall", "repair", "comms", "helipad", "tech", "bastion", "pylon", "spire", "skyfall", "rift", "chorus"],
+	"inf": ["rifle", "thrall", "lancer", "medic", "engineer", "ranger", "pyro", "sapper", "cantor"],
+	"veh": ["buggy", "raider", "skitter", "tank", "scorpion", "mantis", "arty", "geode", "bulwark", "arcc", "harv"],
+	"air": ["skyhawk", "wasp", "moth"],
 }
 const CAT_ORDER := ["bld", "inf", "veh", "air"]
 const PRODUCER := {"inf": "barracks", "veh": "factory", "air": "helipad"}
 const AIRW := ["bullet", "rocket", "flak"]
 ## Weapons that lob over hills; everything else needs a clear line of fire.
-const INDIRECT := ["arty"]
+const INDIRECT := ["arty", "geode"]
 const FACS := {
 	"vanguard": {"name": "Vanguard", "lv": "buggy", "mt": "tank", "ht": "bulwark", "air": "skyhawk", "inf": "ranger", "def": "bastion", "sw": "skyfall"},
 	"ashen": {"name": "Ashen Pact", "lv": "raider", "mt": "scorpion", "ht": "arcc", "air": "wasp", "inf": "pyro", "def": "pylon", "sw": "rift"},
+	"choir": {"name": "Hollow Choir", "lv": "skitter", "mt": "mantis", "ht": "geode", "air": "moth", "inf": "sapper", "def": "spire", "sw": "chorus", "tun": "burrow", "hero": "cantor",
+		"sub": {"refinery": "garden", "rifle": "thrall", "arty": "geode", "harv": ""}},
 }
+const FAC_ORDER := ["vanguard", "ashen", "choir"]
+## The faction's own version of a shared type: the Choir has gardens for refineries, thralls for riflemen.
+## "" when the faction has none.
+static func sub(fac: String, t: String) -> String:
+	return FACS[fac].get("sub", {}).get(t, t) if FACS.has(fac) else t
 const DIFF := {
 	"easy": {"prod": 0.7, "inc": 0.8, "first": 330, "start": 3000},
 	"normal": {"prod": 1.0, "inc": 1.0, "first": 210, "start": 3000},
@@ -92,6 +114,7 @@ const DIFF := {
 const FCOL := {
 	"vanguard": {"col": Color("#3fb4e8"), "dk": Color("#174a63"), "lt": Color("#a6e3ff"), "mini": Color("#5cc8ff")},
 	"ashen": {"col": Color("#e0423a"), "dk": Color("#5e1512"), "lt": Color("#ffb0a8"), "mini": Color("#ff5a4f")},
+	"choir": {"col": Color("#3cc457"), "dk": Color("#14481f"), "lt": Color("#a8f0b4"), "mini": Color("#4fe06a")},
 }
 var TEAMC: Array = [FCOL.vanguard, FCOL.ashen]
 var MINI_COL: Array = [FCOL.vanguard.mini, FCOL.ashen.mini]
@@ -136,11 +159,12 @@ func tcol(theme: String) -> Array:
 		_tcol[theme] = [c.call(TH.grass), c.call(TH.dirt), c.call(TH.sand), c.call(TH.rock), c.call(TH.water)]
 	return _tcol[theme]
 
-const BH := {"hq": 1.55, "power": 1.25, "refinery": 1.3, "barracks": 0.95, "factory": 1.2, "turret": 0.7, "repair": 1.0, "wall": 0.6, "flak": 0.8, "comms": 2.2, "helipad": 0.5, "tech": 1.3, "bastion": 1.2, "pylon": 1.9, "skyfall": 1.0, "rift": 2.2}
-const UH := {"rifle": 0.5, "lancer": 0.55, "medic": 0.5, "engineer": 0.5, "ranger": 0.5, "pyro": 0.55, "buggy": 0.42, "raider": 0.45, "tank": 0.48, "scorpion": 0.4, "bulwark": 0.6, "arcc": 0.85, "arty": 0.55, "harv": 0.58, "skyhawk": 0.4, "wasp": 0.25, "vey": 0.62, "harrow": 0.62, "furnace": 0.95, "saint": 0.8, "truck": 0.6}
+const BH := {"hq": 1.55, "power": 1.25, "refinery": 1.3, "barracks": 0.95, "factory": 1.2, "turret": 0.7, "repair": 1.0, "wall": 0.6, "flak": 0.8, "comms": 2.2, "helipad": 0.5, "tech": 1.3, "bastion": 1.2, "pylon": 1.9, "skyfall": 1.0, "rift": 2.2, "garden": 1.3, "burrow": 0.7, "spire": 1.8, "chorus": 2.0}
+const UH := {"rifle": 0.5, "lancer": 0.55, "medic": 0.5, "engineer": 0.5, "ranger": 0.5, "pyro": 0.55, "buggy": 0.42, "raider": 0.45, "tank": 0.48, "scorpion": 0.4, "bulwark": 0.6, "arcc": 0.85, "arty": 0.55, "harv": 0.58, "skyhawk": 0.4, "wasp": 0.25, "vey": 0.62, "harrow": 0.62, "furnace": 0.95, "saint": 0.8, "truck": 0.6, "thrall": 0.48, "sapper": 0.45, "cantor": 0.7, "skitter": 0.4, "mantis": 0.6, "geode": 0.6, "moth": 0.25}
 
-const ALLB := ["power", "refinery", "barracks", "factory", "turret", "flak", "wall", "repair", "comms", "helipad", "tech", "bastion", "pylon", "skyfall", "rift"]
-const AI_ORDER := ["power", "refinery", "barracks", "power", "factory", "turret", "power", "refinery", "flak", "comms", "repair", "power", "DEF", "turret", "helipad", "power", "tech", "DEF", "power", "flak", "SW", "power", "DEF", "turret", "power"]
+const ALLB := ["power", "refinery", "garden", "barracks", "burrow", "factory", "turret", "flak", "wall", "repair", "comms", "helipad", "tech", "bastion", "pylon", "spire", "skyfall", "rift", "chorus"]
+## "DEF", "SW" and "TUN" are the faction's defence, superweapon and tunnel (skipped when it has none); shared types go through sub().
+const AI_ORDER := ["power", "refinery", "barracks", "power", "factory", "TUN", "turret", "power", "refinery", "flak", "comms", "repair", "TUN", "power", "DEF", "turret", "helipad", "power", "tech", "DEF", "TUN", "power", "flak", "SW", "power", "DEF", "turret", "power"]
 
 var CAMPAIGNS: Array = []
 
@@ -148,12 +172,12 @@ func _init() -> void:
 	for k in BLD:
 		var d: Dictionary = BLD[k]
 		d.type = k
-		for kv in [["fac", ""], ["weapon", ""], ["dmg", 0], ["range", 0.0], ["rof", 1.0], ["antiAir", false], ["needPower", false], ["sw", false], ["charge", 0.0], ["kit", 0], ["splash", 0.0], ["minr", 0.0], ["air", false], ["heal", 0], ["eng", false], ["harv", false], ["turret", false], ["armor", "bld"]]:
+		for kv in [["fac", ""], ["weapon", ""], ["dmg", 0], ["range", 0.0], ["rof", 1.0], ["antiAir", false], ["needPower", false], ["sw", false], ["charge", 0.0], ["kit", 0], ["splash", 0.0], ["minr", 0.0], ["air", false], ["heal", 0], ["eng", false], ["harv", false], ["turret", false], ["armor", "bld"], ["no", []], ["grow", false], ["tun", false], ["lim", 0]]:
 			if not d.has(kv[0]): d[kv[0]] = kv[1]
 	for k in UN:
 		var d: Dictionary = UN[k]
 		d.type = k
-		for kv in [["fac", ""], ["weapon", ""], ["dmg", 0], ["range", 0.0], ["rof", 1.0], ["air", false], ["turret", false], ["heal", 0], ["eng", false], ["harv", false], ["minr", 0.0], ["splash", 0.0], ["antiAir", false], ["hero", false]]:
+		for kv in [["fac", ""], ["weapon", ""], ["dmg", 0], ["range", 0.0], ["rof", 1.0], ["air", false], ["turret", false], ["heal", 0], ["eng", false], ["harv", false], ["minr", 0.0], ["splash", 0.0], ["antiAir", false], ["hero", false], ["no", []], ["burrow", false], ["lim", 0], ["aura", 0.0]]:
 			if not d.has(kv[0]): d[kv[0]] = kv[1]
 	CAMPAIGNS = Campaign.all()
 	for c in CAMPAIGNS:
