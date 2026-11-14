@@ -2,6 +2,8 @@ extends Node
 ## Game shell: owns the simulation, the 3D view, the UI and audio; handles input and game flow.
 
 const T := 32
+const Cutscenes := preload("res://scripts/cutscenes.gd")  # no class_name: an installed shell would not know a new global class
+const CutscenePlayer := preload("res://scripts/cutscene.gd")
 
 var S: Sim
 var V: View3D
@@ -21,6 +23,7 @@ var brief_i := 0
 var camp_id := "ashen"
 var icons_for := ""
 var headless := false
+var cut: CutscenePlayer
 ## Fingers that drag the map. 1 (Guillaume's pick after trying both, 2026-11-14): one-finger drag pans,
 ## hold then drag draws a selection box (or faces a formation). 2: two-finger drag pans and a plain
 ## one-finger drag draws the box.
@@ -53,6 +56,7 @@ func _ready() -> void:
 	var layer := CanvasLayer.new(); add_child(layer)
 	U = UI.new(); U.main = self; layer.add_child(U); U.build()
 	A = GameAudio.new(); add_child(A)
+	cut = CutscenePlayer.new(); cut.main = self; layer.add_child(cut); cut.build(U, V)
 	U.set_tab("bld")
 	U.set_panel(_load_prefs().get("panel", true))
 	V.panel_px = U.panel_px()
@@ -335,8 +339,51 @@ func open_brief(i: int) -> void:
 	U._seg_pick("level", camp_level())
 	U.show_overlay("brief")
 
+## Begin on the briefing: the campaign's opening the first time its first mission starts, then the mission's own intro.
 func begin_mission() -> void:
-	play({"mission": D.camp(camp_id).missions[brief_i], "level": camp_level()})
+	var opt := {"mission": D.camp(camp_id).missions[brief_i], "level": camp_level()}
+	var reel: Array = []
+	var op := Cutscenes.opening_of(camp_id)
+	if brief_i == 0 and Cutscenes.has(op) and not cine_seen(op): reel.append(op)
+	if Cutscenes.has(Cutscenes.intro_of(camp_id, brief_i)): reel.append(Cutscenes.intro_of(camp_id, brief_i))
+	play_reel(reel, func(): play(opt))
+
+# ---------------- cutscenes ----------------
+func cine_seen(id: String) -> bool:
+	return (_camp_file().get("_seen", []) as Array).has(id)
+
+func _cine_mark(id: String) -> void:
+	var d := _camp_file(); var seen: Array = d.get("_seen", [])
+	if seen.has(id): return
+	seen.append(id); d["_seen"] = seen
+	var f := FileAccess.open("user://campaigns.json", FileAccess.WRITE)
+	if f: f.store_string(JSON.stringify(d))
+
+## Plays scenes one after the other (Skip ends only the current one), then calls done.
+func play_reel(ids: Array, done: Callable) -> void:
+	if ids.is_empty() or headless: done.call(); return
+	start_cutscene(ids[0], func(): play_reel(ids.slice(1), done))
+
+## Builds the scene's map and cast on the sim and hands the timeline to the cutscene player.
+func start_cutscene(id: String, done: Callable) -> void:
+	_cine_mark(id)
+	var sc := Cutscenes.scene(id)
+	var M: Dictionary = D.camp(sc.camp).missions[sc.map]
+	placing = null; amove = false; box_mode = false; sw_aim = false; gest = null; ptrs.clear()
+	U.show_overlay(""); U.hud.visible = false; U.panel.visible = false
+	S.new_game("normal", {"mission": M, "level": camp_level(), "cine": true, "bare": sc.get("bare", false)})
+	V.build_world(); V.panel_px = 0.0
+	S.update_vision()
+	paused = false; A.set_paused(false)
+	cut.start(sc, Cutscenes.setup(S, sc), func():
+		U.hud.visible = true; U.panel.visible = U.panel_open; V.panel_px = U.panel_px()
+		paused = true
+		done.call())
+	A.music_start()
+
+## Replays a scene from the campaign screen, then comes back to it.
+func watch_cutscene(id: String) -> void:
+	start_cutscene(id, func(): A.music_stop(); show_campaigns())
 
 ## Campaign difficulty, kept with the campaign progress.
 func camp_level() -> String:
@@ -400,6 +447,9 @@ func toggle_music() -> void:
 	else: A.music_stop()
 
 func _notification(what: int) -> void:
+	if cut and cut.active:
+		if what == NOTIFICATION_WM_GO_BACK_REQUEST: cut.skip()
+		return
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		if U.overlays.menu.visible: resume()
 		elif U.overlays.brief.visible: show_campaigns()
@@ -797,7 +847,7 @@ func _in_view(p: Vector2) -> bool:
 	return V.view_rect().has_point(p)
 
 func _unhandled_input(ev: InputEvent) -> void:
-	if S.teams.is_empty() or paused: return
+	if S.teams.is_empty() or paused or cut.active: return
 	if ev is InputEventScreenTouch:
 		if ev.pressed: _down(ev.index, ev.position, false, 0)
 		else: _up(ev.index, ev.position, ev.canceled)
@@ -1161,6 +1211,13 @@ func render_icons(fac: String) -> void:
 # ---------------- loop ----------------
 func _process(delta: float) -> void:
 	var dt: float = min(.05, delta)
+	if cut.active:
+		S.step(dt)
+		A.intensity = A.intensity + (S.combat - A.intensity) * min(1.0, dt * 0.5)
+		V.render(dt, null, [], null, null)
+		cut.tick(dt)
+		U.tick(dt)
+		return
 	if S.teams.size():
 		if not paused and not S.over:
 			S.step(dt)
@@ -1193,6 +1250,8 @@ func _autotest(dir: String) -> void:
 		await _menu_shots(dir); get_tree().quit(); return
 	if mode == "camp":
 		await _camp_shots(dir); get_tree().quit(); return
+	if mode == "cine":
+		await _cine_shots(dir); get_tree().quit(); return
 	if OS.get_environment("AF_CAMP") != "": camp_id = OS.get_environment("AF_CAMP")
 	if mode.begins_with("m"):
 		open_brief(int(mode.substr(1)))
@@ -1282,6 +1341,30 @@ func _menu_shots(dir: String) -> void:
 	S.over = true; end_game(true)
 	await get_tree().create_timer(1.6).timeout
 	await _shot(dir + "/05_end.png")
+
+## AF_MODE=cine: plays every cutscene (or AF_CINE=id,id) and shoots each shot halfway through, then the game it leads to.
+## Run with --fixed-fps 20 so the scene keeps its pace on a slow renderer.
+func _cine_shots(dir: String) -> void:
+	var ids: Array = Array(OS.get_environment("AF_CINE").split(",", false)) if OS.get_environment("AF_CINE") != "" else Cutscenes.all().keys()
+	for id in ids:
+		var sc := Cutscenes.scene(id)
+		var back := [false]
+		start_cutscene(id, func(): back[0] = true)
+		var last := -1
+		while cut.active:
+			await get_tree().process_frame
+			if cut.si < sc.shots.size() and cut.si >= 0 and cut.si != last and cut.st >= sc.shots[cut.si].d * 0.6:
+				last = cut.si
+				await _shot(dir + "/%s_%d.png" % [id, cut.si + 1])
+		print("CINE ", id, " done=", back[0])
+	# Begin on mission 1 of campaign I: opening (already seen now, so skipped) and intro, then the game
+	camp_id = "ashen"; open_brief(0); begin_mission()
+	await get_tree().create_timer(1.0).timeout
+	cut.skip()
+	while cut.active: await get_tree().process_frame
+	await get_tree().create_timer(1.0).timeout
+	await _shot(dir + "/after_skip.png")
+	print("CINE game running=", not paused, " mission=", S.mission.title if S.mission else "")
 
 ## AF_MODE=camp: the campaign menu, then every mission's briefing and its opening view, zoomed out.
 func _camp_shots(dir: String) -> void:

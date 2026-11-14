@@ -13,6 +13,9 @@ var cam_x := 1024.0
 var cam_y := 1024.0
 var cam_z := 1.0
 var panel_px := 0.0  # width of the side panel covering the right of the screen
+var under: MeshInstance3D   # dark ground plane under the map
+var cine_sky: Sky
+var cine = null      # cutscene camera: {"yaw", "pitch"} in radians; cam_x/cam_y is the point looked at, cam_dist() the distance
 
 var camera := Camera3D.new()
 var sun := DirectionalLight3D.new()
@@ -132,7 +135,7 @@ func _ready() -> void:
 		env.adjustment_enabled = false; env.glow_enabled = false; env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	var we := WorldEnvironment.new(); we.environment = env; add_child(we)
 	add_child(world); add_child(ents_root); add_child(marks_root)
-	var under := MeshInstance3D.new(); var pm := PlaneMesh.new(); pm.size = Vector2(600, 600); under.mesh = pm
+	under = MeshInstance3D.new(); var pm := PlaneMesh.new(); pm.size = Vector2(600, 600); under.mesh = pm
 	var um := StandardMaterial3D.new(); um.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; um.albedo_color = Color("10161a"); under.material_override = um
 	under.position = Vector3(MW / 2.0, -0.9, MH / 2.0); add_child(under)
 	_init_batches()
@@ -474,16 +477,38 @@ func fog_clear(on: bool) -> void:
 func cam_dist() -> float:
 	return 19.0 / cam_z
 
+## Cutscene look: low cameras see past the map, so the black void becomes the menus' dusk sky, with a haze to match.
+func set_cine_look(on: bool) -> void:
+	if on and cine_sky == null:
+		var m := ProceduralSkyMaterial.new()
+		m.sky_top_color = Color("0d0b0a"); m.sky_horizon_color = Color("5c2616"); m.sky_curve = 0.12
+		m.ground_horizon_color = Color("3a1a10"); m.ground_bottom_color = Color("140b08"); m.ground_curve = 0.05
+		m.sun_angle_max = 0.0; m.energy_multiplier = 1.0
+		cine_sky = Sky.new(); cine_sky.sky_material = m; cine_sky.radiance_size = Sky.RADIANCE_SIZE_32
+	var haze := Color("3a1a10") if on else Color("0b0f12")
+	env.background_mode = Environment.BG_SKY if on else Environment.BG_COLOR
+	if on: env.sky = cine_sky
+	env.fog_light_color = haze
+	(under.material_override as StandardMaterial3D).albedo_color = haze if on else Color("10161a")
+
 func clamp_cam() -> void:
 	cam_z = clamp(cam_z, 0.5, 2.4)
 	cam_x = clamp(cam_x, T, D.WW - T); cam_y = clamp(cam_y, T * 2, D.WH - T)
 
 func update_cam() -> void:
 	var d := cam_dist(); var fx := cam_x / T; var fz := cam_y / T
-	camera.position = Vector3(fx, sin(PITCH) * d, fz + cos(PITCH) * d)
-	camera.look_at(Vector3(fx, 0, fz), Vector3.UP)
-	var vh := get_viewport().get_visible_rect().size.y
-	camera.h_offset = panel_px / 2.0 * (2.0 * d * tan(deg_to_rad(camera.fov) / 2.0)) / max(1.0, vh)
+	if cine != null:
+		# free orbit around the point looked at, which sits on the ground
+		var gy: float = maxf(S.h_at(cam_x, cam_y), 0.0) if S != null and not S.H.is_empty() else 0.0
+		var p: float = cine.pitch; var yw: float = cine.yaw
+		camera.position = Vector3(fx + sin(yw) * cos(p) * d, gy + sin(p) * d, fz + cos(yw) * cos(p) * d)
+		camera.look_at(Vector3(fx, gy, fz), Vector3.UP)
+		camera.h_offset = 0.0
+	else:
+		camera.position = Vector3(fx, sin(PITCH) * d, fz + cos(PITCH) * d)
+		camera.look_at(Vector3(fx, 0, fz), Vector3.UP)
+		var vh := get_viewport().get_visible_rect().size.y
+		camera.h_offset = panel_px / 2.0 * (2.0 * d * tan(deg_to_rad(camera.fov) / 2.0)) / max(1.0, vh)
 	var cz := fz - d * .25
 	sun.position = Vector3(fx - 12, 24, cz + 9)
 	sun.look_at(Vector3(fx, 0, cz), Vector3.UP)

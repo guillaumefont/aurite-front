@@ -51,6 +51,7 @@ var ev_done := {}
 var m_t := 1.0
 var end_why := ""
 var lvl := "normal"            # campaign difficulty (D.LEVELS)
+var cine := false              # a cutscene runs on this sim: no AI, no goals or win checks, the whole map in view
 
 # ---------------- util ----------------
 static func _u32(v: int) -> int:
@@ -236,6 +237,7 @@ func _sync_solid(tx: int, ty: int, w: int, h: int) -> void:
 func new_game(d: String, opt: Dictionary) -> void:
 	var M = opt.get("mission", null)
 	mission = M
+	cine = opt.get("cine", false)
 	lvl = opt.get("level", "normal") if M else "normal"
 	diff = (D.DIFF_ORDER[clampi(D.DIFF_ORDER.find(M.diff) + D.LEVELS[lvl].shift, 0, D.DIFF_ORDER.size() - 1)]) if M else d
 	seed = M.seed if M else opt.get("seed", int(Time.get_ticks_msec() % 100000) + randi() % 1000)
@@ -271,7 +273,8 @@ func new_game(d: String, opt: Dictionary) -> void:
 		gen_map(seed)
 	gen_heights(seed)
 	init_astar()
-	if M: mission_setup(M)
+	if M and opt.get("bare", false): gi = 99   # a cutscene's own cast, no mission units or goal marks
+	elif M: mission_setup(M)
 	else:
 		for pair in [[0, D.P0], [1, A]]:
 			var tm: int = pair[0]; var p: Vector2i = pair[1]
@@ -1455,6 +1458,10 @@ func upd_parts(dt: float) -> void:
 	if parts.size() > 900: parts = parts.slice(parts.size() - 900)
 
 func update_vision() -> void:
+	if cine:
+		vis.fill(2)
+		for b in ents: b.seen = true
+		host.on_vision(); return
 	for i in vis.size():
 		if vis[i] == 2: vis[i] = 1
 	for e in ents:
@@ -2076,7 +2083,7 @@ func step(dt: float) -> void:
 	vis_t -= dt
 	if vis_t <= 0: vis_t = 0.2; update_vision()
 	ai_t -= dt
-	if ai_t <= 0:
+	if ai_t <= 0 and not cine:
 		ai_t = 1.0; ai_think(teams[1]); mission_tick(); check_end()
 	upd_strikes(dt); combat = max(0.0, combat - dt * 0.05)
 	var any_dead := false

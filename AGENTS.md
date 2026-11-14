@@ -120,6 +120,22 @@ godot --headless tests/sim_test.tscn   # must end with SIM TEST DONE and no SCRI
   (Guillaume could not beat Kettleford, 2026-11-14), so early missions keep the enemy off tanks and give the player a
   head start. Check a change with an AI-vs-AI soak (player side driven by `ai_think`) before raising enemy pressure.
 
+## Cutscenes (Guillaume 2026-11-14: "Can you do cutscenes?")
+
+- In-engine, no video: `scripts/cutscenes.gd` holds each scene as data (map borrowed from a mission, cast, shots with
+  camera moves, subtitle lines, title cards, actions); `scripts/cutscene.gd` (`CutscenePlayer`, on top of the UI) draws
+  the letterbox, subtitles, Skip and fades and drives the camera; `main.start_cutscene` / `play_reel` build the world.
+- `Sim.cine` turns off AI, goals and win checks and shows the whole map; `"bare"` skips the mission's units (`gi = 99`, no marks).
+  `View3D.cine` is a free orbit camera ({yaw, pitch}); `set_cine_look` swaps the black void for the menus' dusk sky.
+- Scene ids: `<camp>_open` plays before the campaign's first mission the first time (seen ids in `_seen` of
+  `user://campaigns.json`; the campaign screen has an OPENING button to replay it); `<camp>_<n>` is mission n's intro,
+  played on every Begin. First batch: both openings and Embers mission 1. Guillaume wants to judge the style before more.
+- Subtitles: short (the test fails over 64 characters), one per shot, large, in the bottom bar. Speakers in `Cutscenes.WHO`.
+- Check with `AF_SHOT=dir AF_MODE=cine [AF_CINE=id,id] xvfb-run godot --path godot --fixed-fps 20` (one shot per camera cut).
+  `cutscene_tests()` in `tests/sim_test.gd` runs every timeline on the sim.
+- New scripts use `preload` constants, not `class_name`: the global class list comes from the installed APK's shell,
+  so a class added in a self-update pack would be unknown on phones (cutscene.gd and cutscenes.gd do this).
+
 ## Audio and UI on phones
 
 - Sounds come from `godot/tools/synth.py` (`python3 tools/synth.py .` from `godot/`). Keep the current levels:

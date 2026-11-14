@@ -1,4 +1,5 @@
 extends Node
+const Cutscenes := preload("res://scripts/cutscenes.gd")  # no class_name: an installed shell would not know a new global class
 class Host:
 	var log := []
 	func toast(m, k = ""): log.append(m)
@@ -125,8 +126,49 @@ func _ready():
 		print("FORMATION OFF TEST FAILED"); get_tree().quit(1); return
 	if not choir_tests(s, h): get_tree().quit(1); return
 	if not upgrade_tests(s, h): get_tree().quit(1); return
+	if not cutscene_tests(s, h): get_tree().quit(1); return
 	print("SIM TEST DONE")
 	get_tree().quit()
+
+## Every cutscene: its map and cast set up, its timeline runs on the sim (no AI, no goals), its cast
+## stays on the map, nobody dies by accident, and the mission it belongs to still plays normally afterwards.
+func cutscene_tests(s, h) -> bool:
+	for id in Cutscenes.all():
+		var sc: Dictionary = Cutscenes.scene(id)
+		var M: Dictionary = D.camp(sc.camp).missions[sc.map]
+		s.new_game("normal", {"mission": M, "cine": true, "bare": sc.get("bare", false)})
+		var cast: Dictionary = Cutscenes.setup(s, sc)
+		for c in sc.get("cast", []):
+			var want: int = c.get("b", []).size()
+			for p in c.get("u", []): want += p[1]
+			if cast[c.id].size() != want:
+				print("CUTSCENE TEST FAILED: ", id, " cast ", c.id, " has ", cast[c.id].size(), " of ", want); return false
+		var n0: int = s.ents.filter(func(e): return e.kind == "u").size()
+		var total := 0.0
+		for sh in sc.shots:
+			if sh.has("follow") and not cast.has(sh.follow):
+				print("CUTSCENE TEST FAILED: ", id, " follows unknown ", sh.follow); return false
+			if sh.has("say") and sh.say[1].length() > 64:
+				print("CUTSCENE TEST FAILED: ", id, " line too long for a phone: ", sh.say[1]); return false
+			var fired := {}
+			var t := 0.0
+			while t < sh.d:
+				for i in sh.get("do", []).size():
+					if not fired.has(i) and t >= sh.do[i].get("t", 0.0):
+						fired[i] = true; Cutscenes.act(s, cast, sh.do[i])
+				s.step(0.05); t += 0.05
+			total += sh.d
+		var n1: int = s.ents.filter(func(e): return e.kind == "u" and e.alive).size()
+		print("cutscene ", id, " ", snappedf(total, 0.1), "s units ", n0, " -> ", n1, " over=", s.over, " gi=", s.gi)
+		if s.over or n1 < n0 - 1 or total > 50.0:
+			print("CUTSCENE TEST FAILED: ", id, " ended the game, lost units or runs too long"); return false
+		if s.cine == false or s.vis.count(2) != s.vis.size():
+			print("CUTSCENE TEST FAILED: ", id, " not in cutscene mode"); return false
+	# the mission after an intro is an ordinary game again
+	s.new_game("normal", {"mission": D.camp("ashen").missions[0]})
+	if s.cine or s.gi != 0:
+		print("CUTSCENE TEST FAILED: mission after a cutscene is still in cutscene mode"); return false
+	return true
 
 func _fail(msg: String) -> bool:
 	print("CHOIR TEST FAILED: ", msg); return false

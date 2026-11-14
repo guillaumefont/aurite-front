@@ -1,5 +1,6 @@
 class_name UI
 extends Control
+const Cutscenes := preload("res://scripts/cutscenes.gd")  # no class_name: an installed shell would not know a new global class
 ## All screen UI, built in code: HUD, side panel, overlays. Game logic lives in main.gd.
 
 const C_BG := Color("0b0f12")
@@ -698,6 +699,10 @@ func render_campaigns(rows: Array, focus_id: String) -> void:
 		var hv := VBoxContainer.new(); hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL; hv.add_theme_constant_override("separation", 0); hh.add_child(hv)
 		hv.add_child(lbl(C.name.to_upper(), f_wide, 18, W_KHAKI))
 		hv.add_child(lbl(D.FACS[C.fac].name.to_upper() + "  ·  " + ("%d OF %d SECURED" % [mini(done, C.missions.size()), C.missions.size()] if op else "WIN CAMPAIGN I FIRST"), f_wide, 13, W_BRASS if op else W_SAND))
+		var op_id := Cutscenes.opening_of(C.id)
+		if op and Cutscenes.has(op_id):
+			var wb := mkbtn("Opening", func(): main.watch_cutscene(op_id), 0, 40, 12, "launch"); wb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			hh.add_child(wb)
 		var hs := Stamp.new(); hs.small = true; hs.custom_minimum_size = Vector2(120, 44); hs.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		hs.text = "LOCKED" if not op else ("COMPLETE" if done >= C.missions.size() else ("IN PROGRESS" if done > 0 else "NEW"))
 		hs.col = W_SAND if not op else (W_GREEN if done >= C.missions.size() else W_BRASS)
