@@ -949,8 +949,15 @@ class Insignia extends Control:
 	func _draw() -> void:
 		var s := size; var c := Color("d9a441"); var k := Color("d8cba3")
 		var sh := PackedVector2Array([Vector2(s.x * 0.5, 0), Vector2(s.x, s.y * 0.14), Vector2(s.x * 0.92, s.y * 0.66), Vector2(s.x * 0.5, s.y), Vector2(s.x * 0.08, s.y * 0.66), Vector2(0, s.y * 0.14)])
-		draw_colored_polygon(sh, Color("21271a"))
-		sh.append(sh[0]); draw_polyline(sh, c, 2.0)
+		# bold brass rim: a solid band (the shape minus an inset copy) with a dark keyline outside for contrast
+		var bw := maxf(3.0, s.x * 0.065)
+		var ol := sh.duplicate(); ol.append(ol[0]); draw_polyline(ol, Color("0b0d08"), 3.0, true)
+		draw_colored_polygon(sh, c); draw_polyline(ol, c, 1.0, true)
+		var inner: Array = Geometry2D.offset_polygon(sh, -bw, Geometry2D.JOIN_MITER)
+		if inner.size() > 0:
+			var ip: PackedVector2Array = inner[0]
+			draw_colored_polygon(ip, Color("21271a"))
+			ip.append(ip[0]); draw_polyline(ip, Color("8a6a2a"), 1.0, true)
 		# chevrons taper to points and narrow toward the tip, clear of the border
 		for i in 3:
 			var y := 0.47 + 0.13 * i; var hw: float = [0.27, 0.24, 0.19][i]; var t := 0.075
