@@ -29,7 +29,7 @@
   the Vanguard is blue `#3fb4e8`, the Ashen Pact red `#e0423a`, the Hollow Choir green `#3cc457`. Guillaume, 2026-11-14: the game is red themed, so
   campaign I is played as the (red) Ashen Pact and campaign II as the Vanguard.
 
-## Hollow Choir (third faction, skirmish only so far)
+## Hollow Choir (third faction; campaign III)
 
 - Faction-only types have `fac: "choir"`; shared types the Choir does without have `no: ["choir"]`, and
   `D.sub(fac, type)` gives the faction's stand-in (`refinery` → `garden`, `rifle` → `thrall`, `arty` → `geode`).
@@ -102,7 +102,7 @@ godot --headless tests/sim_test.tscn   # must end with SIM TEST DONE and no SCRI
 
 ## Campaigns
 
-- Missions live in `godot/scripts/campaign.gd` (two campaigns, 8 missions each). Each one draws its own map with
+- Missions live in `godot/scripts/campaign.gd` (three campaigns, 8 missions each). Each one draws its own map with
   `MapGen` (rivers, lakes, ridges, mesas, sea, roads, ore) in one of the landscapes in `D.THEMES`, optionally at dusk.
 - Goals run in order (`Sim.mission_tick`): destroy_all, kill (types and/or tag), mine, survive, reach, hold, escort,
   rescue, capture. `keep` loses the mission when a hero or the Command Yard is gone. Heroes (`vey`, `furnace`, `harrow`,
@@ -110,6 +110,12 @@ godot --headless tests/sim_test.tscn   # must end with SIM TEST DONE and no SCRI
 - `tests/sim_test.gd` sets up every mission, runs it a minute, then wins it goal by goal by cheating (`solve()`).
   Add a branch there for any new goal kind.
 - `AF_MODE=camp AF_SHOT=<dir>` shoots the campaign menu, every briefing, every opening view and a wide map view.
+- Campaign III, *The Hollow Song* (Guillaume 2026-11-15: "a third campaign for the burrow", meaning the Hollow Choir),
+  is played as the Choir during the Iron Tide war. It is `"free"` (open from the start, not locked behind II) and each
+  mission names its enemy army with `efac` (Vanguard or Pact; default is the old rule). The Cantor is its hero (required in
+  1, 4, 6, 8; trainable from mission 7); the Deepmaw (`deepmaw`, mission-only) joins in 6 to 8 and is never required.
+  Enemy waves sent at `"harv"` also go for Crystal Gardens. Use Choir types in its data (`garden`, `thrall`), not `D.sub`.
+  It has no cutscenes yet (Guillaume has not judged the style of the first batch).
 - Progress is saved per campaign in `user://campaigns.json`. Campaign II (the story sequel) stays locked until campaign I is won
   (Guillaume, 2026-11-14); `main.camp_open()`.
 - Wave plans spawn the units they name whatever the mission's `aiTech` says (it is often empty). The test jumps to

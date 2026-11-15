@@ -1,12 +1,13 @@
 # Aurite Front (Godot 4 port)
 
 The low-poly 3D RTS from `aurite-front-3d/index.html`, rewritten in Godot 4.7 with GDScript.
-Same map generator, units, buildings, factions, AI and skirmish, plus two 8-mission campaigns:
-*Embers of the Pact* (play the Ashen Pact, red) and *Iron Tide* (play the Vanguard, blue, a year later), with heroes,
+Same map generator, units, buildings, factions, AI and skirmish, plus three 8-mission campaigns:
+*Embers of the Pact* (play the Ashen Pact, red), *Iron Tide* (play the Vanguard, blue, a year later) and
+*The Hollow Song* (play the Hollow Choir, green, against both armies; open from the start), with heroes,
 hand-shaped maps in six landscapes and objectives beyond destroying a base (escort, rescue, capture, hold, hunt, survive, mine).
 
-## The Hollow Choir (skirmish)
-A third army, green, playable in skirmish and as the AI (pick it under *Choose your army* or *Enemy army*):
+## The Hollow Choir
+A third army, green, playable in skirmish, as the AI and in campaign III (pick it under *Choose your army* or *Enemy army*):
 miners and deserters from both sides who stayed too long near raw aurite underground.
 - **No refinery or harvesters.** A *Crystal Garden* yields aurite on its own every few seconds and drinks the ore
   within 5 tiles, so put it on an ore field.

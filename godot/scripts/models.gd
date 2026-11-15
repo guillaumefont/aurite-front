@@ -439,6 +439,22 @@ static func unit_model(type: String, team: int, fac: String) -> Node3D:
 				var wg := B.grp(body, side[0], Vector3(0, .02, side[1]))
 				B.gem(M.cryst, .09, .006, .14, 0, 0, sign(side[1]) * .14, wg); B.gem(M.crystD, .06, .005, .08, -.1, 0, sign(side[1]) * .1, wg)
 			B.box(M.dark, .1, .02, .02, .1, -.05, 0, body); B.flash_mesh(body, .17, -.05, 0, .06, M.glowG)
+		"deepmaw":
+			# the Deepmaw: a huge burrowing beast, three plated segments, a crystal ridge down its back, crushing mandibles
+			for k in 3:
+				var sx := .24 - k * .03
+				B.ico(tm.dk if k == 1 else tm.col, 1, .24 - k * .25, .28 - k * .02, 0, body, Vector3(sx, .15 - k * .015, .2 - k * .02))
+				B.cluster(body, .24 - k * .25, .42 - k * .03, 0, 4 - k, .16 - k * .03, 3 + k)
+			B.ico(M.stone2, 1, .44, .26, 0, body, Vector3(.1, .08, .12))
+			B.box(M.glowG, .012, .025, .12, .53, .28, 0, body)
+			for z in [-.07, .07]: B.box(M.bone, .16, .03, .03, .58, .2, z, body, Vector3(0, z * 6, -.2))
+			for side in [["legL", .18], ["legR", -.18]]:
+				var lg := B.solo(side[0], body, 0, .2, side[1])
+				for x in [-.3, -.05, .2]:
+					B.box(M.stone2, .04, .04, .14, x, 0, sign(side[1]) * .06, lg, Vector3(-sign(side[1]) * .5, 0, 0))
+					B.box(M.stone2, .035, .2, .035, x, -.1, sign(side[1]) * .12, lg)
+			var orb := B.solo("orb", body, -.02, .62, 0); B.ico(M.glowG, 1, 0, 0, 0, orb); orb.scale = Vector3.ONE * .08; B.nshadow[orb] = true
+			B.flash_mesh(body, .64, .2, 0, .12, M.glowG)
 		"furnace":
 			# Old Brann's arc tank: a smelter on tracks, twin chimneys, a furnace mouth and an arc horn on top
 			tracks.call(.86, .28, .15)
