@@ -1,3 +1,5 @@
+> **This game moved to [guillaumefont/games](https://github.com/guillaumefont/games/tree/main/aurite-front).** Builds are published at https://guillaumefont.github.io/games/aurite-front/ and installed test builds update from there.
+
 # Aurite Front
 
 **[Download the Android APK](https://guillaumefont.github.io/aurite-front/aurite-front.apk)** (latest `main` build) ·
