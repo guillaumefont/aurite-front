@@ -648,6 +648,8 @@ const HERO_LINES := {
 	"furnace": "Old Brann's arc tank, forged from a smelter.",
 	"harrow": "Vanguard marksman. Rail rifle, long reach.",
 	"saint": "Marshal Dace's command tank. Heavy twin cannon.",
+	"cantor": "Voice of the Choir. Nearby allies fire faster and mend.",
+	"deepmaw": "A beast of the deep caves. Crushes armour.",
 }
 
 func set_brief_heroes(list: Array, fac: String) -> void:
@@ -658,7 +660,8 @@ func set_brief_heroes(list: Array, fac: String) -> void:
 		var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 0); p.add_child(v)
 		var own: bool = D.UN[h].fac == fac
 		v.add_child(lbl(("HERO  //  " if own else "ENEMY HERO  //  ") + D.UN[h].name.to_upper(), f_wide, 13, W_BRASS if own else C_ACC))
-		var t := lbl(HERO_LINES.get(h, ""), f_body, 14, W_SAND); t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; v.add_child(t)
+		if list.size() <= 2:   # three or more heroes: names only, so Begin stays on a phone screen
+			var t := lbl(HERO_LINES.get(h, ""), f_body, 14, W_SAND); t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; v.add_child(t)
 		btn.br_heroes.add_child(p)
 
 ## A big two-line door on the start screen (red for the main action).
@@ -698,7 +701,7 @@ func render_campaigns(rows: Array, focus_id: String) -> void:
 		var num := lbl(C.num, f_title, 36, C_ACC if op else W_SAND); num.custom_minimum_size.x = 44; num.size_flags_vertical = Control.SIZE_SHRINK_CENTER; hh.add_child(num)
 		var hv := VBoxContainer.new(); hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL; hv.add_theme_constant_override("separation", 0); hh.add_child(hv)
 		hv.add_child(lbl(C.name.to_upper(), f_wide, 18, W_KHAKI))
-		hv.add_child(lbl(D.FACS[C.fac].name.to_upper() + "  ·  " + ("%d OF %d SECURED" % [mini(done, C.missions.size()), C.missions.size()] if op else "WIN CAMPAIGN I FIRST"), f_wide, 13, W_BRASS if op else W_SAND))
+		hv.add_child(lbl(D.FACS[C.fac].name.to_upper() + "  ·  " + ("%d OF %d SECURED" % [mini(done, C.missions.size()), C.missions.size()] if op else "WIN CAMPAIGN %s FIRST" % _prev_num(C.id)), f_wide, 13, W_BRASS if op else W_SAND))
 		var op_id := Cutscenes.opening_of(C.id)
 		if op and Cutscenes.has(op_id):
 			var wb := mkbtn("Opening", func(): main.watch_cutscene(op_id), 0, 40, 12, "launch"); wb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -716,6 +719,12 @@ func render_campaigns(rows: Array, focus_id: String) -> void:
 			if C.id == focus_id and i == done: focus = b
 		var gap := Control.new(); gap.custom_minimum_size.y = 6; camp_pane.add_child(gap)
 	if focus: _show_next.call_deferred(focus)
+
+## Roman number of the campaign before this one ("I" for campaign II).
+func _prev_num(id: String) -> String:
+	for i in range(1, D.CAMPAIGNS.size()):
+		if D.CAMPAIGNS[i].id == id: return D.CAMPAIGNS[i - 1].num
+	return ""
 
 func _mission_btn(C: Dictionary, i: int, done: int) -> Button:
 	var m: Dictionary = C.missions[i]

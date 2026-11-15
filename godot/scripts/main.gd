@@ -291,10 +291,11 @@ func _sequel(id: String) -> String:
 		if D.CAMPAIGNS[i].id == id: return D.CAMPAIGNS[i + 1].id
 	return ""
 
-## A campaign opens once the one before it is finished.
+## A campaign opens once the one before it is finished (unless it is "free").
 func camp_open(id: String) -> bool:
 	for i in range(1, D.CAMPAIGNS.size()):
 		if D.CAMPAIGNS[i].id == id:
+			if D.CAMPAIGNS[i].get("free", false): return true   # a side story: open from the start
 			var prev: Dictionary = D.CAMPAIGNS[i - 1]
 			return camp_open(prev.id) and camp_prog(prev.id) >= prev.missions.size()
 	return true
@@ -1366,9 +1367,10 @@ func _cine_shots(dir: String) -> void:
 	await _shot(dir + "/after_skip.png")
 	print("CINE game running=", not paused, " mission=", S.mission.title if S.mission else "")
 
-## AF_MODE=camp: the campaign menu, then every mission's briefing and its opening view, zoomed out.
+## AF_MODE=camp: the campaign menu, then every mission's briefing and its opening view, zoomed out. AF_CAMP picks one campaign.
 func _camp_shots(dir: String) -> void:
 	for C in D.CAMPAIGNS:
+		if OS.get_environment("AF_CAMP") != "" and OS.get_environment("AF_CAMP") != C.id: continue   # AF_CAMP=choir: one campaign only
 		show_start(); pick_campaign(C.id)
 		await get_tree().create_timer(0.4).timeout
 		await _shot(dir + "/%s_menu.png" % C.id)

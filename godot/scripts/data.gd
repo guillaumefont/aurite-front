@@ -86,6 +86,7 @@ var UN := {
 	"furnace": {"name": "The Furnace", "fac": "ashen", "cat": "veh", "cost": 0, "time": 1, "hp": 1500, "spd": 1.3, "range": 4.8, "sight": 7, "dmg": 72, "rof": 1.6, "weapon": "arc", "armor": "heavy", "r": 16, "hero": true, "req": ["never"]},
 	"harrow": {"name": "Ilse Harrow", "fac": "vanguard", "cat": "inf", "cost": 0, "time": 1, "hp": 420, "spd": 1.3, "range": 7.5, "sight": 9, "dmg": 58, "rof": 1.4, "weapon": "rail", "armor": "inf", "r": 7, "hero": true, "req": ["never"]},
 	"saint": {"name": "Iron Saint", "fac": "vanguard", "cat": "veh", "cost": 0, "time": 1, "hp": 1900, "spd": 1.15, "range": 5.6, "sight": 7, "dmg": 72, "rof": 1.3, "weapon": "shell", "armor": "heavy", "r": 17, "turret": true, "hero": true, "req": ["never"]},
+	"deepmaw": {"name": "The Deepmaw", "fac": "choir", "cat": "veh", "cost": 0, "time": 1, "hp": 1700, "spd": 1.4, "range": 4.6, "sight": 7, "dmg": 66, "rof": 1.5, "weapon": "spine", "armor": "heavy", "r": 17, "hero": true, "req": ["never"]},
 	"truck": {"name": "Convoy Truck", "cat": "veh", "cost": 0, "time": 1, "hp": 520, "spd": 1.6, "sight": 5, "armor": "heavy", "r": 13, "req": ["never"]},
 	"harv": {"name": "Harvester", "no": ["choir"], "cat": "veh", "cost": 1200, "time": 14, "hp": 650, "spd": 1.35, "sight": 4, "armor": "heavy", "r": 14, "harv": true, "req": ["factory", "refinery"]},
 }
@@ -186,7 +187,7 @@ func tcol(theme: String) -> Array:
 	return _tcol[theme]
 
 const BH := {"hq": 1.55, "power": 1.25, "refinery": 1.3, "barracks": 0.95, "factory": 1.2, "turret": 0.7, "repair": 1.0, "wall": 0.6, "flak": 0.8, "comms": 2.2, "helipad": 0.5, "tech": 1.3, "bastion": 1.2, "pylon": 1.9, "skyfall": 1.0, "rift": 2.2, "garden": 1.3, "burrow": 0.7, "spire": 1.8, "chorus": 2.0}
-const UH := {"rifle": 0.5, "lancer": 0.55, "medic": 0.5, "engineer": 0.5, "ranger": 0.5, "pyro": 0.55, "buggy": 0.42, "raider": 0.45, "tank": 0.48, "scorpion": 0.4, "bulwark": 0.6, "arcc": 0.85, "arty": 0.55, "harv": 0.58, "skyhawk": 0.4, "wasp": 0.25, "vey": 0.62, "harrow": 0.62, "furnace": 0.95, "saint": 0.8, "truck": 0.6, "thrall": 0.48, "sapper": 0.45, "cantor": 0.7, "skitter": 0.4, "mantis": 0.6, "geode": 0.6, "moth": 0.25}
+const UH := {"rifle": 0.5, "lancer": 0.55, "medic": 0.5, "engineer": 0.5, "ranger": 0.5, "pyro": 0.55, "buggy": 0.42, "raider": 0.45, "tank": 0.48, "scorpion": 0.4, "bulwark": 0.6, "arcc": 0.85, "arty": 0.55, "harv": 0.58, "skyhawk": 0.4, "wasp": 0.25, "vey": 0.62, "harrow": 0.62, "furnace": 0.95, "saint": 0.8, "truck": 0.6, "deepmaw": 0.9, "thrall": 0.48, "sapper": 0.45, "cantor": 0.7, "skitter": 0.4, "mantis": 0.6, "geode": 0.6, "moth": 0.25}
 
 const ALLB := ["power", "refinery", "garden", "barracks", "burrow", "factory", "turret", "flak", "wall", "repair", "comms", "helipad", "tech", "bastion", "pylon", "spire", "skyfall", "rift", "chorus"]
 ## "DEF", "SW" and "TUN" are the faction's defence, superweapon and tunnel (skipped when it has none); shared types go through sub().
@@ -225,7 +226,7 @@ func _init() -> void:
 			m.idx = i; m.camp = c.id; m.fac = c.fac
 			for kv in [["aiBuild", true], ["aiProd", true], ["aiFirst", -1], ["waves", null], ["swCh", 0.0], ["tech", null], ["aiTech", null], ["phq", true],
 					["pbase", []], ["punits", []], ["pheroes", []], ["ehq", "hq"], ["ebase", []], ["eunits", []], ["eheroes", []], ["posts", []], ["captives", []],
-					["events", []], ["keep", []], ["limit", 0.0], ["credits", [3000, 3000]], ["diff", "normal"], ["heroes", []], ["theatre", ""], ["pvip", []]]:
+					["events", []], ["efac", ""], ["keep", []], ["limit", 0.0], ["credits", [3000, 3000]], ["diff", "normal"], ["heroes", []], ["theatre", ""], ["pvip", []]]:
 				if not m.has(kv[0]): m[kv[0]] = kv[1]
 			for g in m.goals:
 				for kv in [["waves", null], ["done", null], ["label", ""], ["r", 2.5], ["who", "any"], ["need", 1], ["t", 0.0], ["types", []], ["tag", ""], ["protect", []], ["zone", null], ["zones", []], ["at", null], ["n", 0]]:

@@ -242,7 +242,7 @@ func new_game(d: String, opt: Dictionary) -> void:
 	diff = (D.DIFF_ORDER[clampi(D.DIFF_ORDER.find(M.diff) + D.LEVELS[lvl].shift, 0, D.DIFF_ORDER.size() - 1)]) if M else d
 	seed = M.seed if M else opt.get("seed", int(Time.get_ticks_msec() % 100000) + randi() % 1000)
 	var pf: String = M.fac if M else opt.get("fac", "vanguard")
-	var ef: String = opt.get("enemy", "") if not M else ""
+	var ef: String = opt.get("enemy", "") if not M else M.efac   # a mission may name its enemy army (campaign III fights both)
 	if ef == "random":
 		var others: Array = D.FAC_ORDER.filter(func(f): return f != pf)
 		ef = others[randi() % others.size()]
@@ -1818,7 +1818,7 @@ func send_group(us: Array, go) -> void:
 	var tgt: Ent = null
 	if go is String:
 		match go:
-			"harv": tgt = _nearest(0, from, func(e): return e.kind == "u" and e.d.harv)
+			"harv": tgt = _nearest(0, from, func(e): return (e.kind == "u" and e.d.harv) or e.type == "garden")   # the Choir mines with gardens
 			"vip": tgt = _nearest(0, from, func(e): return e.tag == "vip")
 			"hero": tgt = _nearest(0, from, func(e): return e.kind == "u" and e.d.hero)
 			"comms": tgt = _nearest(0, from, func(e): return e.type == "comms")

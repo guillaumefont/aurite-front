@@ -1,6 +1,8 @@
 class_name Campaign
 extends RefCounted
-## The two campaigns. Campaign I is played as the Ashen Pact (red), campaign II, a year later, as the Vanguard (blue).
+## The three campaigns. Campaign I is played as the Ashen Pact (red), campaign II, a year later, as the Vanguard (blue).
+## Campaign III is the Hollow Choir (green) during the Iron Tide war. It is a side story, open from the start ("free"),
+## and its missions name their enemy army ("efac": the Vanguard or the Pact).
 ##
 ## Map coordinates are tiles on the 64×64 grid: x grows east, y grows south. A mission's map is drawn by MapGen
 ## from the primitives in "map" (rivers, lakes, ridges, mesas, gaps, roads, ore fields, sea) on top of noise.
@@ -12,6 +14,7 @@ extends RefCounted
 
 const ASH_EARLY := ["power", "refinery", "barracks", "turret", "wall", "rifle", "lancer", "medic", "pyro", "harv"]
 const VAN_EARLY := ["power", "refinery", "barracks", "turret", "wall", "rifle", "lancer", "medic", "ranger", "harv"]
+const CHO_EARLY := ["power", "garden", "barracks", "burrow", "turret", "wall", "thrall", "lancer", "medic"]
 
 static func all() -> Array:
 	return [
@@ -19,6 +22,8 @@ static func all() -> Array:
 		 "tag": "Play the Ashen Pact. The Vanguard lands in the Sable valley and the foundry towns rise.", "missions": ashen()},
 		{"id": "vanguard", "fac": "vanguard", "num": "II", "name": "Iron Tide",
 		 "tag": "The sequel. A year after Embers, the Directorate returns to break the Pact and its new Rift Engines. Play the Vanguard.", "missions": vanguard()},
+		{"id": "choir", "fac": "choir", "num": "III", "name": "The Hollow Song", "free": true,
+		 "tag": "Play the Hollow Choir. While the Iron Tide breaks over the valley, the miners who stayed below wake up and sing.", "missions": choir()},
 	]
 
 static func _plus(a: Array, b: Array) -> Array:
@@ -326,4 +331,157 @@ static func vanguard() -> Array:
 		 "ehq": "hq", "ebase": ["power", "power", "power", "power", "power", "refinery", "refinery", "barracks", "factory", "comms", "helipad", "tech", "flak", "flak", "pylon", "pylon", "turret", "rift", "rift"],
 		 "eunits": [["scorpion", 3], ["arcc", 2], ["pyro", 3], ["wasp", 2], ["rifle", 4]],
 		 "goals": [{"k": "kill", "types": ["rift", "hq"], "label": "Rift Engines and Command Yard"}]},
+	]
+
+# =====================================================================================
+# Campaign III: The Hollow Song (Hollow Choir), during the Iron Tide war, against both armies
+# =====================================================================================
+static func choir() -> Array:
+	var t2 := _plus(CHO_EARLY, ["factory", "skitter", "mantis"])
+	var t3 := _plus(t2, ["flak", "repair", "comms", "sapper", "engineer", "helipad", "moth"])
+	var t4 := _plus(t3, ["tech", "geode", "spire", "cantor"])
+	var van_ai := ["power", "refinery", "barracks", "factory", "turret", "rifle", "lancer", "medic", "buggy", "tank", "harv"]
+	var van_ai2 := _plus(van_ai, ["flak", "repair", "arty", "comms", "ranger", "helipad", "skyhawk"])
+	var ash_ai := ["power", "refinery", "barracks", "factory", "turret", "rifle", "lancer", "medic", "pyro", "raider", "scorpion", "harv", "comms"]
+	var ash_ai2 := _plus(ash_ai, ["flak", "repair", "arty", "helipad", "wasp", "tech", "arcc", "pylon"])
+	return [
+		# ---- 1: no base, sappers break the Directorate's deep drills, then the Cantor slips away
+		{"title": "First Song", "tag": "Stop the deep drills", "seed": 3101, "diff": "easy", "credits": [0, 0], "efac": "vanguard",
+		 "theatre": "Redrock mines, under the Dust Flats · night",
+		 "brief": "The Directorate's drills are boring down into the caves where the Choir sleeps. One of the old miners woke and started to sing, and the others woke with her. Cantor, take the first of them up to the surface, blow up both deep drills, then lead them back down the old shaft.",
+		 "obj": ["Destroy the two Vanguard deep drills", "Lead the Cantor to the old shaft", "The Cantor must survive", "New: Burrow Sappers dig unseen, then blow up buildings"],
+		 "heroes": ["cantor"],
+		 "map": {"theme": "arid", "dusk": true, "p0": [8, 54], "e0": null, "rock": 0.8,
+			"mesas": [[20, 24, 3.5], [36, 40, 4], [14, 38, 3], [40, 22, 3], [52, 32, 3]],
+			"ore": [[30, 30, 2.8], [50, 14, 2.6], [22, 50, 2.4]], "roads": [[[8, 54], [22, 44], [30, 30], [48, 15]]]},
+		 "phq": false, "tech": [], "aiTech": [], "aiBuild": false, "aiProd": false, "ehq": "",
+		 "pheroes": ["cantor"], "punits": [["thrall", 10], ["sapper", 3], ["medic", 2]], "keep": ["cantor"],
+		 "posts": [{"at": [22, 42], "u": [["rifle", 2]]},
+			{"at": [30, 27], "b": ["refinery", "power"], "u": [["rifle", 3]], "tag": "drills"},
+			{"at": [48, 13], "b": ["refinery", "power", "turret"], "u": [["rifle", 2], ["lancer", 1]], "tag": "drills"},
+			{"at": [44, 40], "u": [["rifle", 2], ["buggy", 1]]}],
+		 "events": [{"t": 300, "say": "Buggies are hunting the Cantor", "spawn": [{"at": [62, 4], "u": [["buggy", 2]], "go": "hero"}]}],
+		 "goals": [
+			{"k": "kill", "tag": "drills", "types": ["refinery"], "label": "deep drills",
+			 "done": {"say": "The drills are silent. Back to the old shaft before they come looking!"}},
+			{"k": "reach", "at": [56, 54], "r": 2.5, "who": "hero", "label": "old shaft",
+			 "waves": {"first": 4, "every": 30, "n": 3, "from": [[62, 30], [40, 2]], "to": "hero",
+				"list": [["rifle", 3, 1, 1], ["buggy", 1, 0, 2]]}}]},
+		# ---- 2: first base, gardens race the Pact's raiders
+		{"title": "Gardens of Glass", "tag": "Grow the first gardens", "seed": 3202, "diff": "easy", "credits": [3000, 1500], "efac": "ashen",
+		 "theatre": "The Gloam hollow, green river country · morning",
+		 "brief": "The Choir needs aurite to grow, and the Gloam hollow is full of it. We have no refineries and no harvesters: our Crystal Gardens drink the ore around them. Plant them on the ore fields and grow 12,000 aurite. Pact raiders have seen the glow and will come for the gardens.",
+		 "obj": ["Grow 12,000 aurite within 13 minutes", "Keep your Command Yard standing", "New: base building, Crystal Gardens on ore, Burrows to build further out"],
+		 "map": {"theme": "temperate", "p0": [10, 53], "e0": [53, 11], "rock": 0.74,
+			"rivers": [{"pts": [[0, 30], [20, 32], [36, 26], [63, 30]], "w": 1.3}], "gaps": [[12, 31, 2], [30, 28, 2], [50, 29, 2]],
+			"ore": [[16, 47, 3.2], [6, 42, 3], [24, 40, 3], [30, 52, 3], [8, 22, 3], [36, 36, 3.2], [44, 18, 3], [54, 40, 3]]},
+		 "tech": CHO_EARLY, "aiTech": ash_ai, "aiBuild": false, "aiFirst": 420,
+		 "pbase": ["power", "barracks"], "punits": [["thrall", 6], ["lancer", 2]], "keep": ["hq"],
+		 "ehq": "hq", "ebase": ["power", "power", "refinery", "barracks", "factory", "turret"], "eunits": [["rifle", 3], ["raider", 1]],
+		 "events": [
+			{"t": 150, "say": "Raider bikes are heading for your gardens", "spawn": [{"at": [62, 34], "u": [["raider", 2]], "go": "harv"}]},
+			{"t": 330, "say": "Pact riflemen are coming for the gardens", "spawn": [{"at": [40, 2], "u": [["rifle", 4], ["raider", 1]], "go": "harv"}]},
+			{"t": 540, "say": "Pyros and raiders in the hollow", "spawn": [{"at": [62, 50], "u": [["pyro", 2], ["raider", 2]], "go": "harv"}]}],
+		 "goals": [{"k": "mine", "n": 12000, "t": 780, "label": "aurite grown"}]},
+		# ---- 3: tunnels under a firebase
+		{"title": "Under the Wall", "tag": "Tunnel past the firebase", "seed": 3303, "diff": "easy", "credits": [4500, 1500], "efac": "vanguard",
+		 "theatre": "Kettle gorge, autumn foundry country · afternoon",
+		 "brief": "A Vanguard firebase sits on the only road into our caves, behind the river and its guns. We do not need the road. Dig Burrows forward, and your army walks into one and comes out of the other. Then wipe the firebase out.",
+		 "obj": ["Destroy every Vanguard unit and structure", "Keep your Command Yard standing", "New: War Factory, Skitters, Glass Mantises (they hunt tanks)"],
+		 "map": {"theme": "autumn", "p0": [10, 52], "e0": [52, 12], "rock": 0.73,
+			"rivers": [{"pts": [[0, 22], [18, 26], [32, 30], [46, 28], [63, 36]], "w": 1.8}], "gaps": [[40, 29, 2]],
+			"ridges": [{"pts": [[30, 2], [32, 14], [38, 22]], "w": 1.8}],
+			"ore": [[18, 46, 3.2], [7, 38, 3], [28, 42, 3], [44, 18, 3], [33, 10, 2.6], [56, 26, 2.6]]},
+		 "tech": t2, "aiTech": ["power", "refinery", "barracks", "factory", "turret", "rifle", "lancer", "medic", "buggy", "harv"], "aiBuild": false, "aiFirst": 420,
+		 "pbase": ["power", "power", "barracks", "garden"], "punits": [["thrall", 8], ["lancer", 3], ["skitter", 3]], "keep": ["hq"],
+		 "ehq": "barracks", "ebase": ["power", "power", "refinery", "factory", "turret", "turret"], "eunits": [["rifle", 4], ["lancer", 1], ["buggy", 1]],
+		 "posts": [{"at": [40, 32], "b": ["turret", "turret"], "u": [["rifle", 3]]}, {"at": [24, 22], "u": [["rifle", 3]]}],
+		 "goals": [{"k": "destroy_all", "label": "Vanguard firebase"}]},
+		# ---- 4: free the captured singers and bring them home
+		{"title": "Chainsong", "tag": "Free the captured Choir", "seed": 3404, "diff": "normal", "credits": [0, 0], "efac": "ashen",
+		 "theatre": "Ironpine quarries · first snow",
+		 "brief": "The Pact has chained a whole hall of our singers at the Ironpine quarries and works them in the pits. They call them hollow men and want to learn how we grow aurite. Cantor, go in with a small band, free every one of them and bring at least five home to the cave mouth.",
+		 "obj": ["Free the prisoners at the quarry (move a unit next to them)", "Bring 5 of them to the cave mouth (south-west)", "The Cantor must survive"],
+		 "heroes": ["cantor", "vey"],
+		 "map": {"theme": "snow", "p0": [7, 56], "e0": null, "rock": 0.74,
+			"ridges": [{"pts": [[0, 34], [14, 36], [26, 30]], "w": 2.2}, {"pts": [[34, 46], [46, 40], [63, 44]], "w": 2.2}],
+			"gaps": [[8, 35, 1.8], [56, 43, 1.8]], "lakes": [[32, 34, 3.5], [20, 12, 3], [54, 56, 3]],
+			"ore": [[46, 10, 3], [52, 20, 2.6], [18, 50, 2.4]], "roads": [[[7, 56], [18, 44], [30, 26], [48, 14]]]},
+		 "phq": false, "tech": [], "aiTech": [], "aiBuild": false, "aiProd": false, "ehq": "",
+		 "pheroes": ["cantor"], "punits": [["thrall", 6], ["skitter", 3], ["mantis", 2], ["medic", 1]], "keep": ["cantor"],
+		 "posts": [{"at": [48, 15], "b": ["turret", "turret", "barracks", "power"], "u": [["pyro", 3], ["rifle", 4], ["raider", 1]]},
+			{"at": [30, 26], "u": [["rifle", 3], ["lancer", 1]]}, {"at": [18, 42], "u": [["raider", 2]]}],
+		 "captives": [{"at": [50, 10], "u": [["thrall", 6], ["sapper", 2]]}],
+		 "goals": [
+			{"k": "rescue", "label": "prisoners", "done": {"say": "They are free and singing! Kestrel Vey is riding after you. Run for the cave mouth!",
+				"spawn": [{"at": [62, 2], "u": [["vey", 1], ["raider", 3]], "go": "vip"}]}},
+			{"k": "escort", "at": [7, 56], "r": 3, "need": 5, "label": "cave mouth"}]},
+		# ---- 5: hold the caves while the Pact tries to collapse them
+		{"title": "The Hum Below", "tag": "Hold the caves", "seed": 3505, "diff": "normal", "credits": [6000, 0], "efac": "ashen",
+		 "theatre": "The Cinder vents · ashfall",
+		 "brief": "The Pact has decided we are a danger and wants to blast our cave mouths shut. Their columns are coming down the Cinder vents. The halls below need ten minutes to seal the deep doors. Hold the surface until then.",
+		 "obj": ["Hold out for 10 minutes", "Keep your Command Yard standing", "New: Burrow Sappers, Glassmoths, Comms Array, Flak Nests"],
+		 "map": {"theme": "ash", "p0": [32, 54], "e0": [32, 6], "rock": 0.74,
+			"rivers": [{"pts": [[0, 30], [20, 32], [44, 28], [63, 32]], "w": 1.6}], "gaps": [[12, 31, 2.2], [32, 30, 2.2], [52, 30, 2.2]],
+			"ore": [[20, 46, 3.4], [44, 46, 3.4], [32, 42, 2.8], [10, 52, 3], [54, 52, 3], [20, 16, 3], [44, 16, 3]]},
+		 "tech": t3, "aiTech": [], "aiBuild": false, "aiProd": false,
+		 "pbase": ["power", "power", "garden", "barracks", "factory", "turret", "turret"], "punits": [["mantis", 3], ["thrall", 8], ["lancer", 3], ["skitter", 2]], "keep": ["hq"],
+		 "ehq": "hq", "ebase": ["power", "power", "refinery", "barracks", "factory", "helipad", "turret", "pylon"],
+		 "goals": [{"k": "survive", "t": 600, "label": "Hold the caves",
+			"waves": {"first": 50, "every": 58, "n": 10, "from": [[14, 4], [50, 4], [32, 2]],
+				"list": [["rifle", 3, 1, 1], ["raider", 2, 0.5, 1], ["pyro", 1, 0.5, 2], ["scorpion", 0, 1, 3], ["wasp", 2, 0, 5], ["arty", 1, 0, 6], ["arcc", 1, 0, 8]]}}]},
+		# ---- 6: wake the Deepmaw, then break the listening post
+		{"title": "The Deepmaw", "tag": "Wake the old beast", "seed": 3606, "diff": "normal", "credits": [6500, 3000], "efac": "vanguard",
+		 "theatre": "The Reedmarsh sinkholes · fog",
+		 "brief": "Deep under the Reedmarsh sleeps the Deepmaw, the oldest thing in the caves. The Directorate has built a listening post right over its hollow, and Captain Ilse Harrow guards it. Cantor, sing the Deepmaw awake at its sinkhole, then turn it on the post and the base behind it.",
+		 "obj": ["Bring the Cantor to the Deepmaw's sinkhole", "Then destroy the listening post (Comms Array) and the Vanguard Command Yard", "The Cantor must survive", "New hero: the Deepmaw"],
+		 "heroes": ["cantor", "deepmaw", "harrow"],
+		 "map": {"theme": "marsh", "p0": [8, 54], "e0": [55, 9], "rock": 0.78,
+			"lakes": [[20, 22, 4], [30, 42, 4], [46, 32, 3.6], [13, 32, 3], [50, 50, 4], [36, 12, 3], [58, 28, 2.6]],
+			"ore": [[16, 48, 3.2], [6, 40, 2.8], [28, 30, 3], [40, 22, 3], [48, 12, 2.8], [54, 40, 2.8]]},
+		 "tech": t3, "aiTech": van_ai, "aiBuild": false, "aiFirst": 420,
+		 "pbase": ["power", "power", "garden", "barracks", "factory", "burrow", "turret"], "pheroes": ["cantor"], "punits": [["mantis", 3], ["thrall", 6], ["sapper", 2], ["lancer", 2]], "keep": ["cantor"],
+		 "ehq": "hq", "ebase": ["power", "power", "power", "refinery", "barracks", "factory", "turret", "flak", "helipad"],
+		 "eheroes": ["harrow"], "eunits": [["tank", 1], ["rifle", 3], ["ranger", 1]],
+		 "posts": [{"at": [46, 22], "b": ["comms", "turret", "flak", "power"], "u": [["rifle", 3], ["ranger", 1], ["tank", 1]], "tag": "post"}, {"at": [34, 30], "u": [["rifle", 3], ["lancer", 1]]}],
+		 "events": [{"t": 420, "say": "Vanguard tanks are probing your base", "spawn": [{"at": [62, 30], "u": [["tank", 2], ["rifle", 3]], "go": "base"}]}],
+		 "goals": [
+			{"k": "reach", "at": [28, 26], "r": 2.5, "who": "hero", "label": "Deepmaw's sinkhole",
+			 "done": {"say": "The ground splits and the Deepmaw rises. It follows the song.", "spawn": [{"team": 0, "at": [28, 26], "u": [["deepmaw", 1]]}]}},
+			{"k": "kill", "types": ["comms", "hq"], "label": "listening post and Command Yard"}]},
+		# ---- 7: hunt the Iron Saint
+		{"title": "Iron in the Garden", "tag": "Stop the Iron Saint", "seed": 3707, "diff": "normal", "credits": [7500, 5000], "efac": "vanguard",
+		 "theatre": "The Glass Flats · high summer",
+		 "brief": "Marshal Dace has heard of the singing caves. He has turned the Iron Saint south to burn our gardens on the Glass Flats, with a whole battle group behind it. Its armour laughs at shards, but not at the Deepmaw or the Mantises. Break the Iron Saint, then their forward Command Yard.",
+		 "obj": ["Destroy the Iron Saint", "Then destroy the Vanguard Command Yard", "Keep your Command Yard standing", "New: Tech Lab, Geode Lobbers, Shard Spires, train the Cantor"],
+		 "heroes": ["deepmaw", "saint"],
+		 "map": {"theme": "arid", "p0": [10, 52], "e0": [52, 12], "rock": 0.8,
+			"mesas": [[24, 26, 4], [38, 20, 3.5], [20, 40, 3.5], [40, 40, 4], [52, 30, 3]],
+			"rivers": [{"pts": [[0, 34], [22, 34], [34, 30], [63, 22]], "w": 0.9}], "gaps": [[14, 34, 1.5], [30, 31, 1.5], [48, 26, 1.5]],
+			"ore": [[18, 46, 3.2], [8, 38, 3], [30, 48, 3], [36, 14, 3], [46, 24, 3], [54, 34, 2.6]]},
+		 "tech": t4, "aiTech": van_ai2, "aiFirst": 260,
+		 "pbase": ["power", "power", "garden", "barracks", "factory", "comms", "burrow"], "pheroes": ["deepmaw"], "punits": [["mantis", 4], ["thrall", 6], ["lancer", 3], ["medic", 1]], "keep": ["hq"],
+		 "ehq": "hq", "ebase": ["power", "power", "power", "refinery", "barracks", "factory", "repair", "turret", "turret", "flak", "bastion"],
+		 "eheroes": ["saint"], "eunits": [["tank", 3], ["rifle", 4], ["ranger", 2]],
+		 "events": [{"t": 240, "say": "The Iron Saint is rolling for your gardens!", "attack": "hero"}],
+		 "goals": [
+			{"k": "kill", "types": ["saint"], "label": "Iron Saint",
+			 "done": {"say": "The Iron Saint is down in the glass! Now break their Command Yard."}},
+			{"k": "kill", "types": ["hq"], "label": "Vanguard Command Yard"}]},
+		# ---- 8: finale against the Pact's Rift Engine
+		{"title": "The Last Chorus", "tag": "Silence the Rift Engine", "seed": 3808, "diff": "hard", "credits": [10000, 6000], "swCh": 80.0, "efac": "ashen",
+		 "theatre": "The Emberhold rift · ashfall at dusk",
+		 "brief": "Every shot of the Pact's Rift Engine cracks the caves below, and Kestrel Vey guards it. The Choir sings as one now. Cantor, raise a Chorus Well, break the Rift Engine and the Pact's Command Yard, and the deep will be quiet again.",
+		 "obj": ["Destroy the Rift Engine and the Pact Command Yard", "The Rift Engine strikes your biggest cluster of buildings when charged", "The Cantor must survive", "New: Chorus Well"],
+		 "heroes": ["cantor", "deepmaw", "vey"],
+		 "map": {"theme": "ash", "dusk": true, "p0": [10, 54], "e0": [52, 12], "rock": 0.72,
+			"rivers": [{"pts": [[0, 28], [18, 32], [30, 26], [40, 38], [63, 42]], "w": 1.6}], "gaps": [[10, 30, 2], [30, 27, 2], [52, 40, 2]],
+			"ridges": [{"pts": [[38, 4], [40, 18], [48, 26]], "w": 1.8}], "gaps2": [[40, 12, 1.8]],
+			"ore": [[18, 46, 3.4], [8, 38, 3], [28, 48, 3], [26, 14, 3], [46, 32, 3], [56, 26, 2.8], [20, 56, 2.8]]},
+		 "tech": null, "aiTech": null, "aiFirst": 230,
+		 "pbase": ["power", "power", "power", "garden", "barracks", "factory", "comms", "burrow"], "pheroes": ["cantor", "deepmaw"],
+		 "punits": [["mantis", 4], ["geode", 1], ["thrall", 6], ["lancer", 3], ["medic", 2]], "keep": ["cantor"],
+		 "ehq": "hq", "ebase": ["power", "power", "power", "power", "refinery", "refinery", "barracks", "factory", "comms", "helipad", "tech", "flak", "flak", "pylon", "pylon", "turret", "rift"],
+		 "eheroes": ["vey"], "eunits": [["scorpion", 3], ["arcc", 2], ["pyro", 3], ["wasp", 2], ["rifle", 4]],
+		 "goals": [{"k": "kill", "types": ["rift", "hq"], "label": "Rift Engine and Command Yard"}]},
 	]
