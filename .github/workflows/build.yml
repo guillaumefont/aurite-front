@@ -120,9 +120,14 @@ jobs:
           # the game pack (aurite-front.pck) of a newer build. A pack only fits the "shell" it was built
           # for: the engine, the project settings, the export preset, the updater and the launcher art.
           # Change any of them and installed games ask for the new APK instead.
-          shell=$( { echo "$GODOT_VERSION"; cat project.godot export_presets.cfg scripts/updater.gd icon.png icon_fg.png icon_bg.png splash.png; } | sha256sum | cut -c1-16)
+          shell=$( { echo "$GODOT_VERSION"; echo games-monorepo; cat project.godot export_presets.cfg scripts/updater.gd icon.png icon_fg.png icon_bg.png splash.png; } | sha256sum | cut -c1-16)
+          # This game moved to the guillaumefont/games monorepo. Main builds here point installed apps at
+          # its Pages folder (games/aurite-front/), and the shell id is salted the same way as there, so an
+          # installed app is offered this APK once, then updates from the monorepo's builds.
           site="https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}/"
-          printf '{"build": %d, "name": "%s", "shell": "%s", "url": "%s", "main_url": "%s"}\n' "$GITHUB_RUN_NUMBER" "$name" "$shell" "$site${PR:+pr/$PR/}" "$site" > build.json
+          new="https://${GITHUB_REPOSITORY_OWNER,,}.github.io/games/aurite-front/"
+          own="$new"; if [ -n "$PR" ]; then own="${site}pr/$PR/"; fi
+          printf '{"build": %d, "name": "%s", "shell": "%s", "url": "%s", "main_url": "%s"}\n' "$GITHUB_RUN_NUMBER" "$name" "$shell" "$own" "$new" > build.json
           cat build.json
           sed -i "0,/^version\/code=.*/s//version\/code=$code/; 0,/^version\/name=.*/s//version\/name=\"$name\"/" export_presets.cfg
           grep -m2 '^version/' export_presets.cfg
