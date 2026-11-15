@@ -90,10 +90,13 @@ def foreground():
     inner = inset(shield, W * 0.075)
     d.polygon(inner, fill=hexc('21271a'))
     d.line(inner + [inner[0], inner[1]], fill=hexc('8a6a2a'), width=int(N * 0.004), joint='curve')
-    # chevrons taper to points and narrow toward the tip, clear of the border
+    # chevrons: even-width bands whose slanted ends all sit on one line per side, clear of the border
+    m = -1 / 3; dy = 0.042 * math.sqrt(1 + m * m); sl = -3.2
+    cut = 0.53 + m * 0.25 + dy / 2 - sl * 0.25   # the end line: y = cut + sl * (x - 0.5)
     for i in range(3):
-        y = 0.47 + 0.13 * i; hw = (0.27, 0.24, 0.19)[i]; t = 0.075
-        d.polygon([P(0.5 - hw, y), P(0.5, y + 0.11 - t / 2), P(0.5 + hw, y), P(0.5, y + 0.11 + t / 2)], fill=hexc('d8cba3'))
+        ap = 0.53 + 0.12 * i
+        u1 = (cut - ap) / (m - sl); u2 = (cut - ap - dy) / (m - sl)
+        d.polygon([P(0.5, ap), P(0.5 + u1, ap + m * u1), P(0.5 + u2, ap + dy + m * u2), P(0.5, ap + dy), P(0.5 - u2, ap + dy + m * u2), P(0.5 - u1, ap + m * u1)], fill=hexc('d8cba3'))
     c = P(0.5, 0.25); st = []
     for i in range(10):
         a = -math.pi / 2 + i * math.pi / 5; r = W * (0.17 if i % 2 == 0 else 0.07)

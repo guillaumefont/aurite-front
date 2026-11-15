@@ -967,10 +967,13 @@ class Insignia extends Control:
 			var ip: PackedVector2Array = inner[0]
 			draw_colored_polygon(ip, Color("21271a"))
 			ip.append(ip[0]); draw_polyline(ip, Color("8a6a2a"), 1.0, true)
-		# chevrons taper to points and narrow toward the tip, clear of the border
+		# chevrons: even-width bands whose slanted ends all sit on one line per side, clear of the border
+		var m := -1.0 / 3.0; var dy := 0.042 * sqrt(1.0 + m * m); var sl := -3.2
+		var cut := 0.53 + m * 0.25 + dy / 2 - sl * 0.25   # the end line: y = cut + sl * (x - 0.5)
 		for i in 3:
-			var y := 0.47 + 0.13 * i; var hw: float = [0.27, 0.24, 0.19][i]; var t := 0.075
-			draw_colored_polygon(PackedVector2Array([Vector2(0.5 - hw, y) * s, Vector2(0.5, y + 0.11 - t / 2) * s, Vector2(0.5 + hw, y) * s, Vector2(0.5, y + 0.11 + t / 2) * s]), k)
+			var ap := 0.53 + 0.12 * i
+			var u1 := (cut - ap) / (m - sl); var u2 := (cut - ap - dy) / (m - sl)
+			draw_colored_polygon(PackedVector2Array([Vector2(0.5, ap) * s, Vector2(0.5 + u1, ap + m * u1) * s, Vector2(0.5 + u2, ap + dy + m * u2) * s, Vector2(0.5, ap + dy) * s, Vector2(0.5 - u2, ap + dy + m * u2) * s, Vector2(0.5 - u1, ap + m * u1) * s]), k)
 		var st := PackedVector2Array(); var cc := Vector2(s.x * 0.5, s.y * 0.27)
 		for i in 10:
 			var a := -PI / 2 + i * PI / 5; var r := s.x * (0.13 if i % 2 == 0 else 0.055)
