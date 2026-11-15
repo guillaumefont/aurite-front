@@ -57,6 +57,21 @@ def background():
         d.ellipse([x - r, y - r, x + r, y + r], fill=(255, rnd.randint(140, 220), 60, rnd.randint(120, 220)))
     return im
 
+def inset(poly, dist):
+    """Polygon edges moved inward by dist (mitred corners); poly is clockwise on screen."""
+    n = len(poly); lines = []
+    for i in range(n):
+        (x0, y0), (x1, y1) = poly[i], poly[(i + 1) % n]
+        dx, dy = x1 - x0, y1 - y0; l = math.hypot(dx, dy); nx, ny = -dy / l, dx / l
+        lines.append(((x0 + nx * dist, y0 + ny * dist), (dx, dy)))
+    out = []
+    for i in range(n):
+        (p, r), (q, t) = lines[i - 1], lines[i]
+        den = r[0] * t[1] - r[1] * t[0]
+        u = ((q[0] - p[0]) * t[1] - (q[1] - p[1]) * t[0]) / den
+        out.append((p[0] + r[0] * u, p[1] + r[1] * u))
+    return out
+
 def foreground():
     im = Image.new('RGBA', (N, N), (0, 0, 0, 0))
     cx, cy = N / 2, N / 2 + N * 0.01
@@ -69,12 +84,12 @@ def foreground():
     ImageDraw.Draw(sh).polygon([(x, y + N * 0.02) for x, y in shield], fill=(0, 0, 0, 170))
     im.alpha_composite(sh.filter(ImageFilter.GaussianBlur(N * 0.02)))
     d = ImageDraw.Draw(im)
-    d.polygon(shield, fill=hexc('21271a'))
-    bw = int(N * 0.022)
-    d.line(shield + [shield[0], shield[1]], fill=hexc('d9a441'), width=bw, joint='curve')
-    # inner rule
-    inner = [(cx + (x - cx) * 0.86, cy + (y - cy) * 0.86 + N * 0.004) for x, y in shield]
-    d.line(inner + [inner[0], inner[1]], fill=hexc('d9a441', 110), width=int(N * 0.006), joint='curve')
+    # bold brass rim: a solid band (the shape minus an inset copy) with a dark keyline outside for contrast
+    d.line(shield + [shield[0], shield[1]], fill=hexc('0b0d08'), width=int(N * 0.014), joint='curve')
+    d.polygon(shield, fill=hexc('d9a441'))
+    inner = inset(shield, W * 0.075)
+    d.polygon(inner, fill=hexc('21271a'))
+    d.line(inner + [inner[0], inner[1]], fill=hexc('8a6a2a'), width=int(N * 0.004), joint='curve')
     # chevrons taper to points and narrow toward the tip, clear of the border
     for i in range(3):
         y = 0.47 + 0.13 * i; hw = (0.27, 0.24, 0.19)[i]; t = 0.075
